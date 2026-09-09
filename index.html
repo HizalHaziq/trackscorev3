@@ -8,6 +8,8 @@
     <meta property="og:title" content="TrackScore" />
     <meta property="og:description" content="Digital Assessor Evaluation System for hardware and software evaluation with real-time scoring, PDF report generation, and managerial review dashboard." />
     <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="/TrackScore_TS_Icon.svg" />
+    <link rel="apple-touch-icon" href="/TrackScore_TS_Icon.svg" />
     <link rel="stylesheet" href="/style.css" />
     <script src="/api/config.js"></script>
     <!-- html2pdf CDN for client-side full breakdown PDF export -->
@@ -17,10 +19,11 @@
     <!-- Site Header: Prominent Solid Black & Vibrant Orange -->
     <header class="site-header" id="main-header">
       <div class="header-inner">
-        <a href="/index.html" class="brand-wrapper" id="brand-link">
-          <div class="brand-emblem" id="brand-emblem">TS</div>
+        <a href="/index.html" class="brand-wrapper" id="brand-link" title="TrackScore Home">
+          <img src="/TrackScore_Logo.svg" alt="TrackScore" class="brand-logo-desktop" height="40" />
+          <img src="/TrackScore_TS_Icon.svg" alt="TrackScore" class="brand-logo-mobile" height="38" />
           <div class="brand-details">
-            <h1>TrackScore <span class="brand-badge">MIROS</span></h1>
+            <span class="brand-badge">MIROS Telematics</span>
             <p class="brand-subtitle">Digital Evaluation System for Telematics Hardware and Software Compliance</p>
           </div>
         </a>
@@ -46,12 +49,6 @@
           <button type="button" class="btn btn-primary btn-sm" id="btn-start-new-eval" title="Start a fresh evaluation form (up to 3 drafts in progress)">
             ➕ Start New Evaluation
           </button>
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-save-draft-top" title="Explicitly save in-progress draft to browser storage">
-            💾 Save Draft
-          </button>
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-save-as-new-top" title="Save current form as a new separate draft (up to 3)">
-            ➕ Save as New Draft
-          </button>
           <button type="button" class="btn btn-secondary btn-sm" id="btn-lookup-rejections" title="Lookup your submissions and review rejection notices">
             🔍 Check Status
           </button>
@@ -60,42 +57,141 @@
         </div>
       </div>
 
-      <form id="evaluation-form" onsubmit="return false;">
-        <!-- Draft Autosave Banner (Requirement 1 & 2) -->
-        <div id="draft-banner" class="draft-banner" style="display: none; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 12px 18px; margin-bottom: 16px; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" role="status">
-          <div style="display: flex; align-items: center; gap: 10px; color: #92400E; font-size: 13.5px; flex-wrap: wrap;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-              <polyline points="17 21 17 13 7 13 7 21"></polyline>
-              <polyline points="7 3 7 8 15 8"></polyline>
+      <!-- Assessor Real-Time Status Change Notification Banner (Feature 2) -->
+      <div id="assessor-status-banner" class="status-notification-banner" style="display: none;" role="alert">
+        <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+          <div id="assessor-banner-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
             </svg>
-            <span>You have an unsaved draft from <strong id="draft-banner-time">earlier</strong>.</span>
-            <a href="javascript:void(0)" id="link-view-all-drafts" style="color: #B45309; text-decoration: underline; font-weight: 600; margin-left: 4px;">View all drafts</a>
           </div>
-          <div style="display: flex; gap: 8px;">
-            <button type="button" class="btn btn-primary btn-sm" id="btn-resume-draft">Resume</button>
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-discard-draft">Discard</button>
-          </div>
+          <div id="assessor-banner-text" style="font-weight: 500;"></div>
         </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-banner-action" style="display: none;">Action</button>
+          <button type="button" class="alert-close-btn" id="btn-dismiss-banner" aria-label="Dismiss banner" style="font-size: 18px; cursor: pointer; background: none; border: none; padding: 4px;">&times;</button>
+        </div>
+      </div>
 
-        <!-- Rubric Version Mismatch Warning Banner (Requirement 1) -->
-        <div id="rubric-mismatch-banner" class="rubric-mismatch-banner" style="display: none; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 12px 18px; margin-bottom: 16px; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" role="alert">
-          <div style="display: flex; align-items: center; gap: 10px; color: #991B1B; font-size: 13.5px;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-              <line x1="12" y1="9" x2="12" y2="13"></line>
-              <line x1="12" y1="17" x2="12.01" y2="17"></line>
-            </svg>
-            <span id="rubric-mismatch-text">This draft was started under an older scoring version — please review your answers before submitting.</span>
+      <!-- Evaluation Workbench Layout (Feature 3: Section Progress Sidebar) -->
+      <div class="evaluation-workbench-layout">
+        <!-- Sticky Section Progress Sidebar -->
+        <aside id="section-progress-sidebar" class="section-progress-sidebar">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #E2E8F0; padding-bottom: 10px;">
+            <h4 style="margin: 0; font-size: 13.5px; font-weight: 700; color: var(--header-black); display: flex; align-items: center; gap: 6px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F58220" stroke-width="2.5">
+                <path d="M9 11l3 3L22 4"></path>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+              </svg>
+              Evaluation Progress
+            </h4>
+            <span id="overall-progress-badge" style="font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; background: #F1F5F9; color: #475569;">
+              0/33 Completed
+            </span>
           </div>
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-dismiss-rubric-warning" style="border-color: #FCA5A5; color: #991B1B;">Dismiss</button>
-        </div>
 
-        <!-- Inline Form Alert Banner (Hardening Pass 2) -->
-        <div id="form-alert-container" class="form-alert-container alert-danger" style="display: none;" role="alert">
-          <div id="form-alert-message" class="form-alert-content"></div>
-          <button type="button" class="alert-close-btn" onclick="dismissFormAlert()" aria-label="Dismiss message">&times;</button>
-        </div>
+          <!-- Overall Progress Track -->
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748B; margin-bottom: 4px;">
+              <span>Completion</span>
+              <strong id="overall-progress-pct" style="color: var(--primary-orange);">0%</strong>
+            </div>
+            <div class="progress-track-bg">
+              <div id="overall-progress-fill" class="progress-bar-fill" style="width: 0%; background: #F58220;"></div>
+            </div>
+          </div>
+
+          <!-- Interactive Section Cards -->
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Metadata Identification Card -->
+            <div class="sidebar-nav-card" id="nav-card-metadata" onclick="scrollToSection('card-metadata')" title="Click to scroll to Assessment Metadata">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 12px; font-weight: 700; color: #1E293B;">Metadata</span>
+                <span id="sidebar-meta-status" style="font-size: 10.5px; font-weight: 600; color: #94A3B8; background: #F1F5F9; padding: 2px 6px; border-radius: 4px;">Pending</span>
+              </div>
+              <div style="font-size: 11px; color: #64748B; margin-top: 3px;">Company, Model, Assessor ID</div>
+            </div>
+
+            <!-- Section A Progress Card -->
+            <div class="sidebar-nav-card" id="nav-card-sec-a" onclick="scrollToSection('card-section-a')" title="Click to scroll to Section A">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 12.5px; font-weight: 700; color: #C2410C;">Section A</span>
+                <span id="sec-a-count-badge" style="font-size: 12px; font-weight: 700; color: #C2410C;">Section A: <strong id="sec-a-count">0</strong>/24</span>
+              </div>
+              <div class="progress-track-bg">
+                <div id="sec-a-progress-fill" class="progress-bar-fill" style="width: 0%; background: #EA580C;"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10.5px; color: #64748B;">
+                <span>Hardware &amp; System</span>
+                <span id="sec-a-pct">0% answered</span>
+              </div>
+            </div>
+
+            <!-- Section B Progress Card -->
+            <div class="sidebar-nav-card" id="nav-card-sec-b" onclick="scrollToSection('card-section-b')" title="Click to scroll to Section B">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 12.5px; font-weight: 700; color: #1D4ED8;">Section B</span>
+                <span id="sec-b-count-badge" style="font-size: 12px; font-weight: 700; color: #1D4ED8;">Section B: <strong id="sec-b-count">0</strong>/9</span>
+              </div>
+              <div class="progress-track-bg">
+                <div id="sec-b-progress-fill" class="progress-bar-fill" style="width: 0%; background: #2563EB;"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10.5px; color: #64748B;">
+                <span>Advanced Features</span>
+                <span id="sec-b-pct">0% answered</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Missing Criteria Incomplete Warning Box (Feature 3) -->
+          <div id="sidebar-incomplete-alert" style="display: none; margin-top: 14px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 10px; font-size: 11.5px; color: #991B1B;">
+            <div style="font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 5px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              Incomplete Criteria (<span id="missing-count">0</span>):
+            </div>
+            <div id="sidebar-missing-list" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 6px;"></div>
+          </div>
+        </aside>
+
+        <!-- Main Form Content Area -->
+        <div class="form-content-area" style="min-width: 0;">
+          <form id="evaluation-form" onsubmit="return false;">
+            <!-- Draft Autosave Banner (Requirement 1 & 2) -->
+            <div id="draft-banner" class="draft-banner" style="display: none; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 12px 18px; margin-bottom: 16px; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" role="status">
+              <div style="display: flex; align-items: center; gap: 10px; color: #92400E; font-size: 13.5px; flex-wrap: wrap;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                <span>You have an unsaved draft from <strong id="draft-banner-time">earlier</strong>.</span>
+                <a href="javascript:void(0)" id="link-view-all-drafts" style="color: #B45309; text-decoration: underline; font-weight: 600; margin-left: 4px;">View all drafts</a>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn btn-primary btn-sm" id="btn-resume-draft">Resume</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-discard-draft">Discard</button>
+              </div>
+            </div>
+
+            <!-- Rubric Version Mismatch Warning Banner (Requirement 1) -->
+            <div id="rubric-mismatch-banner" class="rubric-mismatch-banner" style="display: none; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 12px 18px; margin-bottom: 16px; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" role="alert">
+              <div style="display: flex; align-items: center; gap: 10px; color: #991B1B; font-size: 13.5px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <span id="rubric-mismatch-text">This draft was started under an older scoring version — please review your answers before submitting.</span>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-dismiss-rubric-warning" style="border-color: #FCA5A5; color: #991B1B;">Dismiss</button>
+            </div>
+
+            <!-- Inline Form Alert Banner (Hardening Pass 2) -->
+            <div id="form-alert-container" class="form-alert-container alert-danger" style="display: none;" role="alert">
+              <div id="form-alert-message" class="form-alert-content"></div>
+              <button type="button" class="alert-close-btn" onclick="dismissFormAlert()" aria-label="Dismiss message">&times;</button>
+            </div>
 
         <!-- Metadata Card -->
         <section class="card" id="card-metadata">
@@ -220,7 +316,9 @@
           </div>
         </section>
       </form>
-    </main>
+    </div><!-- /.form-content-area -->
+  </div><!-- /.evaluation-workbench-layout -->
+</main>
 
     <!-- Persistent Floating Live Score Summary Bar -->
     <aside class="score-summary-sticky" id="sticky-score-bar">
@@ -251,20 +349,13 @@
         </div>
 
         <div class="score-actions">
-          <button type="button" class="btn btn-secondary" id="btn-save-draft" title="Save in-progress draft to browser storage">
+          <button type="button" class="btn btn-secondary" id="btn-save-draft" title="Explicitly save in-progress draft to browser storage">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
               <polyline points="17 21 17 13 7 13 7 21"></polyline>
               <polyline points="7 3 7 8 15 8"></polyline>
             </svg>
             Save Draft
-          </button>
-          <button type="button" class="btn btn-secondary" id="btn-save-as-new" title="Save current form as a brand new draft">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Save as New Draft
           </button>
           <button type="button" class="btn btn-secondary" id="btn-pdf-report">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -276,13 +367,12 @@
             </svg>
             Generate PDF Report
           </button>
-          <button type="button" class="btn btn-primary" id="btn-save-evaluation">
+          <button type="button" class="btn btn-primary" id="btn-save-evaluation" title="Submit completed evaluation to manager review database">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-              <polyline points="17 21 17 13 7 13 7 21"></polyline>
-              <polyline points="7 3 7 8 15 8"></polyline>
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
             </svg>
-            Save Evaluation
+            Submit Evaluation
           </button>
         </div>
         <div id="autosave-indicator" style="font-size: 11px; color: var(--text-muted); text-align: right; padding-top: 4px;"></div>
@@ -317,9 +407,21 @@
         </div>
 
         <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-          <button type="button" class="btn btn-primary btn-sm" id="btn-modal-new-eval">
-            ➕ Start New Evaluation
-          </button>
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-modal-new-eval">
+              ➕ Start New Evaluation
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-save-as-new-modal" title="Save current active form as a new separate draft">
+              💾 Save Form as New Draft
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-export-drafts" title="Export all drafts to a downloadable JSON file">
+              📥 Export Drafts (JSON)
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-import-drafts" title="Import drafts from a JSON file (max 3 drafts cap enforced)">
+              📤 Import Drafts
+            </button>
+            <input type="file" id="input-import-drafts" accept=".json,application/json" style="display: none;" />
+          </div>
           <button type="button" class="btn btn-secondary btn-sm" id="btn-close-drafts">Close</button>
         </div>
       </div>
@@ -421,6 +523,9 @@
         </div>
       </div>
     </div>
+
+    <!-- Status Change Toast Container (Feature 2) -->
+    <div id="status-toast-container" class="status-toast-container"></div>
 
     <footer class="site-footer" id="site-footer">
       <p><strong>TrackScore • Telematics Assessment & Verification Portal</strong></p>

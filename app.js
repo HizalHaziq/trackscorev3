@@ -348,6 +348,7 @@ const assessmentState = {
   activeDraftId: null,
   rubricVersion: RUBRIC_VERSION,
   resubmitRecordId: null,
+  answeredCriteria: {}, // Keyed by criterion id: true when an option has been selected
   selectedItems: {}, // Keyed by criterion id: { section, id, name, selectedOption, points }
   metadata: {
     companyName: "",
@@ -404,7 +405,8 @@ function renderCriteriaSection(criteriaList, containerId, sectionPrefix) {
     criterion.options.forEach((opt, optIdx) => {
       const inputId = `radio_${criterion.id}_${optIdx}`;
       const isNone = opt.points === 0;
-      const isDefault = isNone;
+      const isAnswered = !!(assessmentState.answeredCriteria && assessmentState.answeredCriteria[criterion.id]);
+      const isSelected = isAnswered && assessmentState.selectedItems[criterion.id]?.selectedOption === opt.label;
 
       optionsHtml += `
         <label class="option-label ${isNone ? 'is-none' : ''}" for="${inputId}">
@@ -417,7 +419,7 @@ function renderCriteriaSection(criteriaList, containerId, sectionPrefix) {
             data-section="${sectionPrefix}"
             data-crit-id="${criterion.id}"
             data-crit-name="${criterion.name}"
-            ${isDefault ? 'checked' : ''}
+            ${isSelected ? 'checked' : ''}
           />
           <span class="option-card">
             <span>${opt.label}</span>
@@ -431,14 +433,16 @@ function renderCriteriaSection(criteriaList, containerId, sectionPrefix) {
     rowEl.innerHTML = metaHtml + optionsHtml;
     container.appendChild(rowEl);
 
-    // Initial state capture (starts at None 0)
-    assessmentState.selectedItems[criterion.id] = {
-      section: sectionPrefix,
-      id: criterion.id,
-      name: criterion.name,
-      selectedOption: "None (0)",
-      points: 0.0
-    };
+    // Initial state capture (starts at None 0 if not set)
+    if (!assessmentState.selectedItems[criterion.id]) {
+      assessmentState.selectedItems[criterion.id] = {
+        section: sectionPrefix,
+        id: criterion.id,
+        name: criterion.name,
+        selectedOption: "None (0)",
+        points: 0.0
+      };
+    }
   });
 }
 
@@ -560,7 +564,12 @@ function handleOptionChange(event) {
     }
   }
 
+  // Feature 3: Mark criterion as answered and update sidebar progress
+  if (!assessmentState.answeredCriteria) assessmentState.answeredCriteria = {};
+  assessmentState.answeredCriteria[critId] = true;
+
   calculateScores();
+  updateSectionProgressUI();
   debouncedAutosave();
 }
 
@@ -571,7 +580,158 @@ function captureMetadata() {
   assessmentState.metadata.assessorName = (document.getElementById("assessorName")?.value || "").trim();
   assessmentState.metadata.assessorId = (document.getElementById("assessorId")?.value || "").trim();
   assessmentState.metadata.assessmentDate = document.getElementById("assessmentDate")?.value || new Date().toISOString().split("T")[0];
+  updateSectionProgressUI();
 }
+
+// ==========================================================================
+// 3a. Section Progress Sidebar & Completeness Subsystem (Feature 3)
+// ==========================================================================
+
+function updateSectionProgressUI() {
+  if (!assessmentState.answeredCriteria) assessmentState.answeredCriteria = {};
+
+  const answeredA = SECTION_A_CRITERIA.filter(c => assessmentState.answeredCriteria[c.id]).length;
+  const answeredB = SECTION_B_CRITERIA.filter(c => assessmentState.answeredCriteria[c.id]).length;
+  const totalAnswered = answeredA + answeredB;
+  const totalCriteria = 33;
+
+  // Update Section A elements
+  const secACountEl = document.getElementById("sec-a-count");
+  const secAFillEl = document.getElementById("sec-a-progress-fill");
+  const secAPctEl = document.getElementById("sec-a-pct");
+  const pctA = Math.round((answeredA / 24) * 100);
+
+  if (secACountEl) secACountEl.textContent = answeredA;
+  if (secAFillEl) secAFillEl.style.width = `${(answeredA / 24) * 100}%`;
+  if (secAPctEl) secAPctEl.textContent = `${pctA}% answered`;
+
+  // Update Section B elements
+  const secBCountEl = document.getElementById("sec-b-count");
+  const secBFillEl = document.getElementById("sec-b-progress-fill");
+  const secBPctEl = document.getElementById("sec-b-pct");
+  const pctB = Math.round((answeredB / 9) * 100);
+
+  if (secBCountEl) secBCountEl.textContent = answeredB;
+  if (secBFillEl) secBFillEl.style.width = `${(answeredB / 9) * 100}%`;
+  if (secBPctEl) secBPctEl.textContent = `${pctB}% answered`;
+
+  // Update Overall badge and progress track
+  const overallBadgeEl = document.getElementById("overall-progress-badge");
+  const overallPctEl = document.getElementById("overall-progress-pct");
+  const overallFillEl = document.getElementById("overall-progress-fill");
+  const overallPctVal = Math.round((totalAnswered / totalCriteria) * 100);
+
+  if (overallBadgeEl) {
+    overallBadgeEl.textContent = `${totalAnswered}/${totalCriteria} Completed`;
+    if (totalAnswered === totalCriteria) {
+      overallBadgeEl.style.background = "#ECFDF5";
+      overallBadgeEl.style.color = "#065F46";
+    } else {
+      overallBadgeEl.style.background = "#F1F5F9";
+      overallBadgeEl.style.color = "#475569";
+    }
+  }
+
+  if (overallPctEl) overallPctEl.textContent = `${overallPctVal}%`;
+  if (overallFillEl) {
+    overallFillEl.style.width = `${overallPctVal}%`;
+    overallFillEl.style.background = totalAnswered === totalCriteria ? "#10B981" : "#F58220";
+  }
+
+  // Update Metadata status indicator
+  const metaStatusEl = document.getElementById("sidebar-meta-status");
+  const hasMeta = !!(
+    assessmentState.metadata.companyName &&
+    assessmentState.metadata.deviceModel &&
+    assessmentState.metadata.assessorName &&
+    assessmentState.metadata.assessorId
+  );
+
+  if (metaStatusEl) {
+    if (hasMeta) {
+      metaStatusEl.textContent = "Complete";
+      metaStatusEl.style.color = "#065F46";
+      metaStatusEl.style.background = "#ECFDF5";
+    } else {
+      metaStatusEl.textContent = "Pending";
+      metaStatusEl.style.color = "#94A3B8";
+      metaStatusEl.style.background = "#F1F5F9";
+    }
+  }
+
+  // If all completed, hide the incomplete alert
+  if (totalAnswered === totalCriteria) {
+    const alertBox = document.getElementById("sidebar-incomplete-alert");
+    if (alertBox) alertBox.style.display = "none";
+  }
+}
+
+function scrollToSection(elementId) {
+  const el = document.getElementById(elementId);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    el.classList.add("section-highlight");
+    setTimeout(() => el.classList.remove("section-highlight"), 1600);
+  }
+}
+window.scrollToSection = scrollToSection;
+
+function getMissingCriteria() {
+  const missing = [];
+  if (!assessmentState.answeredCriteria) assessmentState.answeredCriteria = {};
+
+  SECTION_A_CRITERIA.forEach((crit, idx) => {
+    if (!assessmentState.answeredCriteria[crit.id]) {
+      missing.push({
+        id: crit.id,
+        name: crit.name,
+        section: "A",
+        code: `A${idx + 1}`
+      });
+    }
+  });
+
+  SECTION_B_CRITERIA.forEach((crit, idx) => {
+    if (!assessmentState.answeredCriteria[crit.id]) {
+      missing.push({
+        id: crit.id,
+        name: crit.name,
+        section: "B",
+        code: `B${idx + 1}`
+      });
+    }
+  });
+
+  return missing;
+}
+
+function displayIncompleteWarning(missingItems) {
+  const alertBox = document.getElementById("sidebar-incomplete-alert");
+  const countEl = document.getElementById("missing-count");
+  const listEl = document.getElementById("sidebar-missing-list");
+  if (!alertBox || !listEl) return;
+
+  alertBox.style.display = "block";
+  if (countEl) countEl.textContent = missingItems.length;
+
+  listEl.innerHTML = missingItems.map(item => `
+    <a href="javascript:void(0)" onclick="scrollToCriterion('${item.id}')" style="display: block; text-decoration: none; color: #991B1B; padding: 5px 8px; border-radius: 4px; background: #FFFFFF; border: 1px solid #FECACA; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;" title="Click to jump to ${item.code}: ${escapeHtml(item.name)}">
+      <strong style="color: #DC2626;">${item.code}.</strong> ${escapeHtml(item.name)}
+    </a>
+  `).join("");
+
+  alertBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function scrollToCriterion(critId) {
+  const row = document.getElementById(`row-${critId}`);
+  if (row) {
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.classList.add("missing-highlight");
+    setTimeout(() => row.classList.remove("missing-highlight"), 2500);
+  }
+}
+window.scrollToCriterion = scrollToCriterion;
 
 // ==========================================================================
 // 3b. Multi-Draft Autosave Subsystem (Requirements 1, 2, 3, 4)
@@ -709,6 +869,7 @@ function serializeDraft(draftId) {
     formState: {
       metadata: { ...assessmentState.metadata },
       selections,
+      answeredCriteria: { ...assessmentState.answeredCriteria },
       scores: { ...assessmentState.scores }
     }
   };
@@ -965,7 +1126,17 @@ function restoreDraft(draft) {
     });
   }
 
+  assessmentState.answeredCriteria = {};
+  if (state.answeredCriteria) {
+    assessmentState.answeredCriteria = { ...state.answeredCriteria };
+  } else if (state.selections) {
+    Object.keys(state.selections).forEach(k => {
+      assessmentState.answeredCriteria[k] = true;
+    });
+  }
+
   calculateScores();
+  updateSectionProgressUI();
 
   const banner = document.getElementById("draft-banner");
   if (banner) banner.style.display = "none";
@@ -1008,11 +1179,13 @@ function startNewEvaluation() {
   if (dateEl) dateEl.value = new Date().toISOString().split("T")[0];
 
   assessmentState.selectedItems = {};
+  assessmentState.answeredCriteria = {};
   captureMetadata();
 
   renderCriteriaSection(SECTION_A_CRITERIA, "sectionA-container", "A");
   renderCriteriaSection(SECTION_B_CRITERIA, "sectionB-container", "B");
   calculateScores();
+  updateSectionProgressUI();
 
   closeDraftsModal();
   const banner = document.getElementById("draft-banner");
@@ -1348,6 +1521,7 @@ async function loadEvaluationForCorrection(recordId) {
     captureMetadata();
 
     // Populate radio buttons
+    assessmentState.answeredCriteria = {};
     if (Array.isArray(doc.breakdown)) {
       doc.breakdown.forEach(item => {
         let radio = document.querySelector(`input[data-crit-id="${item.id}"][data-label="${item.selectedOption}"]`);
@@ -1366,6 +1540,7 @@ async function loadEvaluationForCorrection(recordId) {
             selectedOption: item.selectedOption,
             points
           };
+          assessmentState.answeredCriteria[item.id] = true;
           const rowEl = document.getElementById(`row-${item.id}`);
           const badgeEl = document.getElementById(`badge-${item.id}`);
           if (rowEl) {
@@ -1386,6 +1561,7 @@ async function loadEvaluationForCorrection(recordId) {
     }
 
     calculateScores();
+    updateSectionProgressUI();
     debouncedAutosave();
     closeLookupModal();
 
@@ -1776,11 +1952,22 @@ async function saveEvaluationToDatabase() {
     return;
   }
 
+  // Feature 3: Section progress completeness enforcement
+  // Block submission if any of the 33 criteria items have not been evaluated
+  const missingItems = getMissingCriteria();
+  if (missingItems.length > 0) {
+    const errorMsg = `Submission Blocked: All 33 criteria must be evaluated before saving. (${missingItems.length} item${missingItems.length > 1 ? 's' : ''} remaining)`;
+    showFormAlert(errorMsg, "warning");
+    showToast(errorMsg, true);
+    displayIncompleteWarning(missingItems);
+    return;
+  }
+
   const saveBtn = document.getElementById("btn-save-evaluation");
-  const originalHtml = saveBtn ? saveBtn.innerHTML : "Save Evaluation";
+  const originalHtml = saveBtn ? saveBtn.innerHTML : "Submit Evaluation";
   if (saveBtn) {
     saveBtn.disabled = true;
-    saveBtn.innerHTML = `<span class="spinner-inline spinner-white"></span> Saving Evaluation...`;
+    saveBtn.innerHTML = `<span class="spinner-inline spinner-white"></span> Submitting Evaluation...`;
   }
 
   // Build full breakdown list
@@ -1991,12 +2178,14 @@ function resetEvaluationForm() {
   if (dateEl) dateEl.value = new Date().toISOString().split("T")[0];
 
   assessmentState.selectedItems = {};
+  assessmentState.answeredCriteria = {};
   captureMetadata();
 
   // Re-render and re-calculate
   renderCriteriaSection(SECTION_A_CRITERIA, "sectionA-container", "A");
   renderCriteriaSection(SECTION_B_CRITERIA, "sectionB-container", "B");
   calculateScores();
+  updateSectionProgressUI();
 
   const indicator = document.getElementById("autosave-indicator");
   if (indicator) indicator.textContent = "Evaluation form reset to blank state.";
@@ -2048,6 +2237,8 @@ function fillDemoData() {
     tampered_alert: "Push"
   };
 
+  assessmentState.answeredCriteria = {};
+
   Object.entries(samplePicks).forEach(([critId, optionLabel]) => {
     const radio = document.querySelector(`input[data-crit-id="${critId}"][data-label="${optionLabel}"]`);
     if (radio) {
@@ -2062,6 +2253,7 @@ function fillDemoData() {
         selectedOption: optionLabel,
         points
       };
+      assessmentState.answeredCriteria[critId] = true;
       const rowEl = document.getElementById(`row-${critId}`);
       const badgeEl = document.getElementById(`badge-${critId}`);
       if (rowEl) rowEl.classList.add("has-score");
@@ -2072,8 +2264,344 @@ function fillDemoData() {
     }
   });
 
+  captureMetadata();
   calculateScores();
+  updateSectionProgressUI();
+  debouncedAutosave();
   showToast("Demo evaluation loaded with high-specification inputs.");
+}
+
+// ==========================================================================
+// 5. Bulk Draft Export and Import Subsystem
+// ==========================================================================
+
+function exportDraftsToJson() {
+  const drafts = getDrafts();
+  const draftIds = Object.keys(drafts);
+  if (draftIds.length === 0) {
+    showToast("No drafts found in storage to export.", true);
+    return;
+  }
+
+  const exportPayload = {
+    app: "TrackScore",
+    version: "2.1",
+    exportedAt: new Date().toISOString(),
+    draftsCount: draftIds.length,
+    drafts: drafts
+  };
+
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
+  const downloadAnchor = document.createElement("a");
+  const dateStr = new Date().toISOString().split("T")[0];
+  downloadAnchor.setAttribute("href", dataStr);
+  downloadAnchor.setAttribute("download", `TrackScore_Drafts_${dateStr}.json`);
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
+
+  showToast(`Exported ${draftIds.length} draft(s) as JSON successfully!`);
+}
+
+function importDraftsFromJson(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      let incomingDrafts = {};
+
+      if (parsed.drafts && typeof parsed.drafts === "object") {
+        incomingDrafts = parsed.drafts;
+      } else if (parsed && typeof parsed === "object" && !parsed.drafts) {
+        incomingDrafts = parsed;
+      }
+
+      const incomingIds = Object.keys(incomingDrafts).filter(id => {
+        const d = incomingDrafts[id];
+        return d && (d.formState || d.metadata || d.companyName);
+      });
+
+      if (incomingIds.length === 0) {
+        showToast("Invalid drafts file: No recognized draft records found.", true);
+        return;
+      }
+
+      const currentDrafts = getDrafts();
+      const currentIds = Object.keys(currentDrafts);
+      const totalCombinedCount = currentIds.length + incomingIds.length;
+
+      // Enforce the 3-draft cap!
+      if (totalCombinedCount > MAX_DRAFTS) {
+        const warningBox = document.getElementById("drafts-modal-warning");
+        const msg = `Import Blocked: Exceeds ${MAX_DRAFTS}-draft limit. You currently have ${currentIds.length} draft(s) and attempted to import ${incomingIds.length} draft(s) (total ${totalCombinedCount}). Please discard some drafts first.`;
+        if (warningBox) {
+          warningBox.textContent = msg;
+          warningBox.style.display = "block";
+        }
+        showToast(`Import Blocked: Exceeds ${MAX_DRAFTS}-draft limit (${currentIds.length} existing + ${incomingIds.length} imported).`, true);
+        return;
+      }
+
+      incomingIds.forEach(id => {
+        const draft = incomingDrafts[id];
+        const newId = generateDraftId();
+        draft.draftId = newId;
+        const currentComp = draft.companyName || draft.formState?.metadata?.companyName || "Untitled Draft";
+        draft.companyName = currentComp.includes("(Imported)") ? currentComp : `${currentComp} (Imported)`;
+        currentDrafts[newId] = draft;
+      });
+
+      saveDrafts(currentDrafts);
+      renderDraftsModal();
+      updateDraftsCountUI();
+      showToast(`Successfully imported ${incomingIds.length} draft(s)!`);
+    } catch (err) {
+      console.error("Draft import error:", err);
+      showToast("Failed to parse JSON file. Ensure it is a valid TrackScore drafts backup.", true);
+    } finally {
+      event.target.value = "";
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ==========================================================================
+// 6. Real-Time Status Change Notifications Subsystem (Feature 2)
+// Assessor alerts via SSE with Polling Fallback
+// ==========================================================================
+let sseConnection = null;
+let notificationPollingTimer = null;
+const SEEN_EVENTS_STORAGE_KEY = "trackscore_seen_status_events";
+
+function getSeenStatusEvents() {
+  try {
+    const raw = localStorage.getItem(SEEN_EVENTS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function markStatusEventSeen(eventId) {
+  if (!eventId) return;
+  const seen = getSeenStatusEvents();
+  if (!seen.includes(eventId)) {
+    seen.push(eventId);
+    if (seen.length > 50) seen.shift();
+    try {
+      localStorage.setItem(SEEN_EVENTS_STORAGE_KEY, JSON.stringify(seen));
+    } catch (e) {}
+  }
+}
+
+function playNotificationChime() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (e) {}
+}
+
+function showStatusBanner(evt) {
+  const banner = document.getElementById("assessor-status-banner");
+  const textEl = document.getElementById("assessor-banner-text");
+  const actionBtn = document.getElementById("btn-banner-action");
+  if (!banner || !textEl) return;
+
+  const isApproved = evt.status === "approved";
+  banner.className = `status-notification-banner ${isApproved ? 'banner-approved' : 'banner-rejected'}`;
+
+  const comp = evt.companyName || "Evaluation";
+  const model = evt.deviceModel ? ` (${evt.deviceModel})` : "";
+  const reviewer = evt.reviewedBy ? ` by ${evt.reviewedBy}` : "";
+
+  if (isApproved) {
+    textEl.innerHTML = `<strong>Evaluation Approved:</strong> ${escapeHtml(comp)}${escapeHtml(model)} was approved${escapeHtml(reviewer)}. Record is locked from further edits.`;
+    if (actionBtn) {
+      actionBtn.style.display = "inline-flex";
+      actionBtn.textContent = "View Status";
+      actionBtn.onclick = () => {
+        openLookupModal();
+        const input = document.getElementById("lookup-assessor-input");
+        if (input) {
+          input.value = evt.companyName || "";
+          lookupAssessorSubmissions(evt.companyName);
+        }
+      };
+    }
+  } else {
+    const reason = evt.rejectionReason ? ` — Reason: "${escapeHtml(evt.rejectionReason)}"` : "";
+    textEl.innerHTML = `<strong>Action Required — Rejected:</strong> ${escapeHtml(comp)}${escapeHtml(model)} was rejected${escapeHtml(reviewer)}${reason}. Click to load and correct.`;
+    if (actionBtn) {
+      actionBtn.style.display = "inline-flex";
+      actionBtn.textContent = "Load to Correct";
+      actionBtn.onclick = () => {
+        loadEvaluationForCorrection(evt.evaluationId);
+        banner.style.display = "none";
+      };
+    }
+  }
+
+  banner.style.display = "flex";
+}
+
+function showStatusToast(evt) {
+  const toastContainer = document.getElementById("status-toast-container");
+  if (!toastContainer) return;
+
+  const isApproved = evt.status === "approved";
+  const comp = evt.companyName || "Evaluation";
+  const model = evt.deviceModel ? ` - ${evt.deviceModel}` : "";
+
+  const toast = document.createElement("div");
+  toast.className = `status-toast ${isApproved ? 'toast-approved' : 'toast-rejected'}`;
+
+  toast.innerHTML = `
+    <div style="font-size: 20px;">${isApproved ? '✅' : '❌'}</div>
+    <div style="flex: 1; min-width: 0;">
+      <div style="font-weight: 700; font-size: 13px; color: #0F172A;">
+        Evaluation ${isApproved ? 'Approved' : 'Rejected'}
+      </div>
+      <div style="font-size: 12px; color: #475569; margin-top: 2px;">
+        ${escapeHtml(comp)}${escapeHtml(model)}
+        ${!isApproved && evt.rejectionReason ? `<div style="font-style: italic; color: #991B1B; margin-top: 2px;">"${escapeHtml(evt.rejectionReason)}"</div>` : ''}
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      ${!isApproved ? `
+        <button type="button" class="btn btn-primary btn-sm btn-toast-correct" style="font-size: 11.5px; padding: 4px 8px; white-space: nowrap;">
+          Fix &amp; Resubmit
+        </button>
+      ` : `
+        <button type="button" class="btn btn-secondary btn-sm btn-toast-view" style="font-size: 11.5px; padding: 4px 8px; white-space: nowrap;">
+          View
+        </button>
+      `}
+      <button type="button" class="btn-toast-close" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #94A3B8;">&times;</button>
+    </div>
+  `;
+
+  toast.querySelector(".btn-toast-close")?.addEventListener("click", () => {
+    toast.remove();
+  });
+
+  if (!isApproved) {
+    toast.querySelector(".btn-toast-correct")?.addEventListener("click", () => {
+      loadEvaluationForCorrection(evt.evaluationId);
+      toast.remove();
+    });
+  } else {
+    toast.querySelector(".btn-toast-view")?.addEventListener("click", () => {
+      openLookupModal();
+      lookupAssessorSubmissions(evt.companyName);
+      toast.remove();
+    });
+  }
+
+  toastContainer.appendChild(toast);
+
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateX(50px)";
+      toast.style.transition = "all 0.3s ease";
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, 10000);
+}
+
+function handleIncomingStatusEvent(evt) {
+  if (!evt || !evt.id || !evt.status) return;
+
+  const seen = getSeenStatusEvents();
+  if (seen.includes(evt.id)) return;
+  markStatusEventSeen(evt.id);
+
+  playNotificationChime();
+  showStatusBanner(evt);
+  showStatusToast(evt);
+}
+
+async function pollStatusNotifications() {
+  if (document.visibilityState !== "visible") return;
+  try {
+    const currentAssessorId = (document.getElementById("assessorId")?.value || "").trim();
+    let url = `/.netlify/functions/get-notifications`;
+    if (currentAssessorId) {
+      url += `?assessorId=${encodeURIComponent(currentAssessorId)}`;
+    }
+
+    const res = await fetch(url, {
+      headers: { "x-api-key": getAssessorApiKey() }
+    });
+    if (!res.ok) return;
+    const json = await res.json();
+    if (json.success && Array.isArray(json.events)) {
+      json.events.forEach(handleIncomingStatusEvent);
+    }
+  } catch (e) {}
+}
+
+function initAssessorStatusListener() {
+  document.getElementById("btn-dismiss-banner")?.addEventListener("click", () => {
+    const banner = document.getElementById("assessor-status-banner");
+    if (banner) banner.style.display = "none";
+  });
+
+  if (typeof EventSource !== "undefined") {
+    try {
+      const currentAssessorId = (document.getElementById("assessorId")?.value || "").trim();
+      let sseUrl = `/.netlify/functions/status-stream`;
+      if (currentAssessorId) sseUrl += `?assessorId=${encodeURIComponent(currentAssessorId)}`;
+
+      sseConnection = new EventSource(sseUrl);
+
+      sseConnection.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "STATUS_EVENT" && data.event) {
+            handleIncomingStatusEvent(data.event);
+          } else if (data.status) {
+            handleIncomingStatusEvent(data);
+          }
+        } catch (e) {}
+      };
+
+      sseConnection.onerror = () => {
+        if (!notificationPollingTimer) {
+          notificationPollingTimer = setInterval(pollStatusNotifications, 25000);
+        }
+      };
+    } catch (e) {
+      if (!notificationPollingTimer) {
+        notificationPollingTimer = setInterval(pollStatusNotifications, 25000);
+      }
+    }
+  } else {
+    notificationPollingTimer = setInterval(pollStatusNotifications, 25000);
+  }
+
+  setTimeout(pollStatusNotifications, 1500);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      pollStatusNotifications();
+    }
+  });
 }
 
 // ==========================================================================
@@ -2107,9 +2635,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Attach button handlers
     document.getElementById("btn-save-draft")?.addEventListener("click", () => saveDraftToStorage(true, false));
-    document.getElementById("btn-save-draft-top")?.addEventListener("click", () => saveDraftToStorage(true, false));
-    document.getElementById("btn-save-as-new")?.addEventListener("click", saveDraftAsNew);
-    document.getElementById("btn-save-as-new-top")?.addEventListener("click", saveDraftAsNew);
+    document.getElementById("btn-save-as-new-modal")?.addEventListener("click", saveDraftAsNew);
     document.getElementById("btn-my-drafts")?.addEventListener("click", () => openDraftsModal());
     document.getElementById("link-view-all-drafts")?.addEventListener("click", () => openDraftsModal());
     document.getElementById("btn-start-new-eval")?.addEventListener("click", startNewEvaluation);
@@ -2175,6 +2701,19 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btn-download-pdf-modal")?.addEventListener("click", () => downloadReportPdf(true));
     document.getElementById("btn-print-report")?.addEventListener("click", printCurrentReport);
 
+    // Feature 5: Bulk Draft Export & Import handlers
+    document.getElementById("btn-export-drafts")?.addEventListener("click", exportDraftsToJson);
+    document.getElementById("btn-import-drafts")?.addEventListener("click", () => {
+      document.getElementById("input-import-drafts")?.click();
+    });
+    document.getElementById("input-import-drafts")?.addEventListener("change", importDraftsFromJson);
+
+    // Feature 2: Initialize real-time status change notification listener
+    initAssessorStatusListener();
+
+    // Feature 3: Initialize section progress UI
+    updateSectionProgressUI();
+
     // Close on overlay backdrop click
     const draftsModal = document.getElementById("drafts-modal");
     if (draftsModal) {
@@ -2220,6 +2759,7 @@ window.TrackScore = {
   SECTION_A_CRITERIA,
   SECTION_B_CRITERIA,
   calculateScores,
+  updateSectionProgressUI,
   generatePdfReport,
   downloadReportPdf,
   printCurrentReport,
@@ -2232,5 +2772,7 @@ window.TrackScore = {
   restoreDraft,
   discardDraft,
   handleDiscardDraftClick,
-  handleResumeDraftClick
+  handleResumeDraftClick,
+  exportDraftsToJson,
+  importDraftsFromJson
 };

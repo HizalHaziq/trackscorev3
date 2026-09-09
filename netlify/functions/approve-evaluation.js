@@ -10,6 +10,7 @@
 
 import { connectToDatabase, COLLECTION_NAME, buildMongoIdFilter } from './db.js';
 import { validateRole, ROLE_MANAGER, authErrorResponse } from './auth.js';
+import { recordStatusEvent } from './status-bus.js';
 
 export const handler = async (event, context) => {
   const headers = {
@@ -162,6 +163,26 @@ export const handler = async (event, context) => {
       });
     } else {
       await connection.updateEvaluation(id, updateFields, historyEntry);
+    }
+
+    // Broadcast status change event for SSE streams and polling listeners
+    try {
+      recordStatusEvent({
+        evaluationId: id,
+        assessorId: existing.assessorId || '',
+        assessorName: existing.assessorName || '',
+        companyName: existing.companyName || '',
+        deviceModel: existing.deviceModel || '',
+        status: targetStatus,
+        rejectionReason: updateFields.rejectionReason || null,
+        approvedBy: updateFields.approvedBy || null,
+        approvedAt: updateFields.approvedAt || null,
+        rejectedBy: updateFields.rejectedBy || null,
+        rejectedAt: updateFields.rejectedAt || null,
+        statusChangedAt: nowIso
+      });
+    } catch (evtErr) {
+      console.error('Failed to broadcast status change event:', evtErr);
     }
 
     return {

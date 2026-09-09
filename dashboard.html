@@ -5,19 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TrackScore Dashboard</title>
     <meta name="description" content="TrackScore Managerial Review Dashboard for telematics hardware and software evaluation records." />
+    <link rel="icon" type="image/svg+xml" href="/TrackScore_TS_Icon.svg" />
+    <link rel="apple-touch-icon" href="/TrackScore_TS_Icon.svg" />
     <link rel="stylesheet" href="/style.css" />
     <script src="/api/config.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+      .pulse-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: #10B981;
+        display: inline-block;
+        animation: pulse-dot-anim 1.6s ease-in-out infinite;
+      }
+      @keyframes pulse-dot-anim {
+        0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+        60% { transform: scale(1.15); box-shadow: 0 0 0 5px rgba(16, 185, 129, 0); }
+        100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+      }
+    </style>
   </head>
   <body>
     <!-- Site Header: Prominent Solid Black & Vibrant Orange -->
     <header class="site-header" id="dashboard-header">
       <div class="header-inner">
-        <a href="/index.html" class="brand-wrapper" id="brand-link">
-          <div class="brand-emblem">TS</div>
+        <a href="/index.html" class="brand-wrapper" id="brand-link" title="TrackScore Home">
+          <img src="/TrackScore_Logo.svg" alt="TrackScore" class="brand-logo-desktop" height="40" />
+          <img src="/TrackScore_TS_Icon.svg" alt="TrackScore" class="brand-logo-mobile" height="38" />
           <div class="brand-details">
-            <h1>TrackScore <span class="brand-badge">Managerial Review</span></h1>
-            <p class="brand-subtitle">Telematics Assessment Registry & Verification History</p>
+            <span class="brand-badge">Managerial Review</span>
+            <p class="brand-subtitle">Telematics Assessment Registry &amp; Verification History</p>
           </div>
         </a>
 
@@ -140,6 +158,23 @@
             </svg>
             Refresh
           </button>
+
+          <!-- Auto-Refresh Interval Toggle (Feature 1) -->
+          <div class="auto-refresh-box" style="display: inline-flex; align-items: center; gap: 8px; background: #F8FAFC; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 4px 10px;" title="Periodically refresh evaluations without page reload">
+            <span id="live-sync-indicator" style="display: none; align-items: center; gap: 6px;" title="Live Sync Active">
+              <span class="pulse-dot"></span>
+              <span style="font-size: 11px; font-weight: 700; color: #10B981; letter-spacing: 0.2px;">Live Syncing</span>
+            </span>
+            <label for="auto-refresh-select" style="font-size: 12px; font-weight: 600; color: #475569; display: flex; align-items: center; cursor: pointer; user-select: none; margin: 0;">
+              Auto-refresh:
+            </label>
+            <select id="auto-refresh-select" class="form-control" style="width: auto; padding: 2px 6px; font-size: 12px; height: 26px; border-radius: 4px; font-weight: 600;" onchange="handleAutoRefreshChange(this.value)">
+              <option value="off" selected>Off</option>
+              <option value="15">15s</option>
+              <option value="30">30s</option>
+              <option value="60">60s</option>
+            </select>
+          </div>
 
           <!-- Bulk Export (CSV & Combined PDF) Buttons -->
           <button type="button" class="btn btn-secondary btn-sm" id="btn-export-csv" onclick="exportFilteredCsv()" title="Export current filtered records to standard CSV file">
@@ -507,21 +542,25 @@
         fetchEvaluations(1, currentLimit);
       }
 
-      async function fetchEvaluations(page = currentPage, limit = currentLimit) {
+      async function fetchEvaluations(page = currentPage, limit = currentLimit, isSilent = false) {
         currentPage = page;
         currentLimit = limit;
 
         const tbody = document.getElementById("evaluations-tbody");
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="10" style="text-align: center; padding: 48px 24px;">
-              <div class="spinner-inline" style="width: 28px; height: 28px; border-width: 3px;"></div>
-              <div style="margin-top: 12px; font-weight: 600; color: var(--text-muted);">
-                Loading evaluations from database...
-              </div>
-            </td>
-          </tr>
-        `;
+        const prevScrollY = window.scrollY;
+
+        if (!isSilent) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="10" style="text-align: center; padding: 48px 24px;">
+                <div class="spinner-inline" style="width: 28px; height: 28px; border-width: 3px;"></div>
+                <div style="margin-top: 12px; font-weight: 600; color: var(--text-muted);">
+                  Loading evaluations from database...
+                </div>
+              </td>
+            </tr>
+          `;
+        }
 
         const includeDeleted = document.getElementById("include-deleted-toggle")?.checked ? "true" : "false";
         const statusFilter = document.getElementById("status-filter")?.value || "all";
@@ -557,11 +596,20 @@
             updateDashboardMetrics(evaluationsList, result.isMongoAtlas, totalCount, result.atlasDiagnostic);
             renderEvaluationsTable(evaluationsList);
             updatePaginationUI();
+
+            if (isSilent) {
+              window.scrollTo({ top: prevScrollY, behavior: 'instant' });
+            }
           } else {
             throw new Error(result.error || "Failed to load records");
           }
         } catch (error) {
           console.error("Dashboard fetch error:", error);
+
+          if (isSilent) {
+            // In silent polling mode, do not disrupt table or manager interaction
+            return;
+          }
 
           // Show prominent error banner
           const banner = document.getElementById("dashboard-error-banner");
@@ -628,6 +676,67 @@
           }
         }
       }
+
+      // ==========================================================================
+      // Auto-Refresh & Live Sync Management (Feature 1)
+      // ==========================================================================
+      let autoRefreshIntervalSec = 0;
+      let autoRefreshTimer = null;
+
+      function handleAutoRefreshChange(val) {
+        if (val === "off") {
+          stopAutoRefresh();
+        } else {
+          const secs = parseInt(val, 10);
+          if (!isNaN(secs) && secs > 0) {
+            startAutoRefresh(secs);
+          } else {
+            stopAutoRefresh();
+          }
+        }
+      }
+
+      function startAutoRefresh(secs) {
+        stopAutoRefresh();
+        autoRefreshIntervalSec = secs;
+        const indicator = document.getElementById("live-sync-indicator");
+        if (indicator) indicator.style.display = "inline-flex";
+
+        autoRefreshTimer = setInterval(() => {
+          if (document.visibilityState === "visible") {
+            fetchEvaluations(currentPage, currentLimit, true);
+          }
+        }, secs * 1000);
+      }
+
+      function stopAutoRefresh() {
+        if (autoRefreshTimer) {
+          clearInterval(autoRefreshTimer);
+          autoRefreshTimer = null;
+        }
+        autoRefreshIntervalSec = 0;
+        const indicator = document.getElementById("live-sync-indicator");
+        if (indicator) indicator.style.display = "none";
+      }
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+          if (autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+          }
+        } else if (document.visibilityState === "visible") {
+          if (autoRefreshIntervalSec > 0 && !autoRefreshTimer) {
+            // Tab active again: perform immediate background sync and resume timer
+            fetchEvaluations(currentPage, currentLimit, true);
+            autoRefreshTimer = setInterval(() => {
+              if (document.visibilityState === "visible") {
+                fetchEvaluations(currentPage, currentLimit, true);
+              }
+            }, autoRefreshIntervalSec * 1000);
+          }
+        }
+      });
 
       function updatePaginationUI() {
         const infoEl = document.getElementById("pagination-info");

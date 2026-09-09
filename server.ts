@@ -17,6 +17,9 @@ import { handler as deleteEvaluationHandler } from './netlify/functions/delete-e
 import { handler as exportEvaluationsHandler } from './netlify/functions/export-evaluations.js';
 import { handler as approveEvaluationHandler } from './netlify/functions/approve-evaluation.js';
 import { handler as lookupEvaluationHandler } from './netlify/functions/lookup-evaluation.js';
+import { handler as statusStreamHandler } from './netlify/functions/status-stream.js';
+import { handler as getNotificationsHandler } from './netlify/functions/get-notifications.js';
+import { statusEmitter, getRecentStatusEvents } from './netlify/functions/status-bus.js';
 
 const app = express();
 const PORT = 3000;
@@ -102,6 +105,56 @@ app.all('/.netlify/functions/approve-evaluation', (req: Request, res: Response) 
 
 app.all('/.netlify/functions/lookup-evaluation', (req: Request, res: Response) => {
   return invokeNetlifyHandler(lookupEvaluationHandler, req, res);
+});
+
+// SSE Status Stream (Feature 2)
+app.get(['/.netlify/functions/status-stream', '/api/status-stream'], (req: Request, res: Response) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+
+  const assessorId = (req.query.assessorId as string || '').trim().toLowerCase();
+  res.write(`: connected\n\n`);
+
+  // Stream recent events
+  const recent = getRecentStatusEvents(assessorId);
+  recent.forEach((e: any) => {
+    res.write(`data: ${JSON.stringify(e)}\n\n`);
+  });
+
+  const listener = (event: any) => {
+    if (assessorId) {
+      const eAssessorId = String(event.assessorId || '').trim().toLowerCase();
+      const eAssessorName = String(event.assessorName || '').trim().toLowerCase();
+      if (eAssessorId !== assessorId && eAssessorName !== assessorId) {
+        return;
+      }
+    }
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+
+  statusEmitter.on('status-change', listener);
+
+  const heartbeat = setInterval(() => {
+    res.write(`: heartbeat\n\n`);
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    statusEmitter.off('status-change', listener);
+  });
+});
+
+app.all(['/.netlify/functions/status-stream', '/api/status-stream'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(statusStreamHandler, req, res);
+});
+
+// Polling notification check (Feature 2 fallback & complement)
+app.all(['/.netlify/functions/get-notifications', '/api/get-notifications'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(getNotificationsHandler, req, res);
 });
 
 // Aliases for standard API paths
