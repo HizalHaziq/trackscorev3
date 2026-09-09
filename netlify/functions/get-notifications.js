@@ -28,7 +28,7 @@ export const handler = async (event, context) => {
 
   try {
     const params = event.queryStringParameters || {};
-    const assessorId = (params.assessorId || params.query || '').trim();
+    const assessorId = (params.assessorName || params.assessorId || params.query || '').trim();
     const since = params.since || null;
 
     // Check in-memory event bus first for any fresh status change events
@@ -85,6 +85,10 @@ export const handler = async (event, context) => {
       approvedAt: r.approvedAt || null,
       rejectedBy: r.rejectedBy || null,
       rejectedAt: r.rejectedAt || null,
+      totalScore: typeof r.totalScore === 'number' ? r.totalScore : (parseFloat(r.totalScore) || 0),
+      starsCount: r.starsCount || 0,
+      ratingLabel: r.ratingLabel || '',
+      createdAt: r.createdAt || null,
       statusChangedAt: r.statusChangedAt || r.updatedAt || r.createdAt
     }));
 

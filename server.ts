@@ -116,20 +116,20 @@ app.get(['/.netlify/functions/status-stream', '/api/status-stream'], (req: Reque
     'Access-Control-Allow-Origin': '*'
   });
 
-  const assessorId = (req.query.assessorId as string || '').trim().toLowerCase();
+  const assessorQuery = (req.query.assessorName as string || req.query.assessorId as string || req.query.assessor as string || '').trim().toLowerCase();
   res.write(`: connected\n\n`);
 
   // Stream recent events
-  const recent = getRecentStatusEvents(assessorId);
+  const recent = getRecentStatusEvents(assessorQuery);
   recent.forEach((e: any) => {
     res.write(`data: ${JSON.stringify(e)}\n\n`);
   });
 
   const listener = (event: any) => {
-    if (assessorId) {
+    if (assessorQuery) {
       const eAssessorId = String(event.assessorId || '').trim().toLowerCase();
       const eAssessorName = String(event.assessorName || '').trim().toLowerCase();
-      if (eAssessorId !== assessorId && eAssessorName !== assessorId) {
+      if (eAssessorId !== assessorQuery && eAssessorName !== assessorQuery && !eAssessorName.includes(assessorQuery)) {
         return;
       }
     }

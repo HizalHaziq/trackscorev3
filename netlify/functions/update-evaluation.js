@@ -115,6 +115,17 @@ export const handler = async (event, context) => {
     if (payload.deviceModel) updateFields.deviceModel = String(payload.deviceModel).trim();
     if (payload.packageName) updateFields.packageName = String(payload.packageName).trim();
     if (payload.assessorName) updateFields.assessorName = String(payload.assessorName).trim();
+    if (payload.assessorId !== undefined) {
+      const cleanAssessorId = String(payload.assessorId).trim().toUpperCase();
+      if (cleanAssessorId && !/^[A-Z]{3} \d{4}$/.test(cleanAssessorId)) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'Invalid Assessor ID format. Must strictly follow 3 letters and 4 numbers (e.g. MKA 9006).' })
+        };
+      }
+      updateFields.assessorId = cleanAssessorId;
+    }
     if (payload.assessmentDate) updateFields.assessmentDate = String(payload.assessmentDate).trim();
 
     // If breakdown array provided, recompute scores server-side

@@ -37,7 +37,7 @@ export const handler = async (event, context) => {
 
   try {
     const params = event.queryStringParameters || {};
-    const assessorQuery = (params.assessorId || params.query || '').trim().toLowerCase();
+    const assessorQuery = (params.assessorName || params.assessorId || params.query || '').trim().toLowerCase();
     const idQuery = (params.id || '').trim();
 
     if (!assessorQuery && !idQuery) {
@@ -62,6 +62,7 @@ export const handler = async (event, context) => {
       } else {
         const regex = new RegExp(assessorQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
         filter.$or = [
+          { assessorId: regex },
           { assessorName: regex },
           { companyName: regex },
           { deviceModel: regex }
@@ -76,9 +77,10 @@ export const handler = async (event, context) => {
       } else {
         records = all.filter(d => {
           const a = String(d.assessorName || '').toLowerCase();
+          const aid = String(d.assessorId || '').toLowerCase();
           const c = String(d.companyName || '').toLowerCase();
           const m = String(d.deviceModel || '').toLowerCase();
-          return a.includes(assessorQuery) || c.includes(assessorQuery) || m.includes(assessorQuery);
+          return aid.includes(assessorQuery) || a.includes(assessorQuery) || c.includes(assessorQuery) || m.includes(assessorQuery);
         }).slice(0, 20);
       }
     }
@@ -95,6 +97,7 @@ export const handler = async (event, context) => {
           deviceModel: r.deviceModel,
           packageName: r.packageName,
           assessorName: r.assessorName,
+          assessorId: r.assessorId || null,
           assessmentDate: r.assessmentDate,
           totalScore: r.totalScore,
           sectionAScore: r.sectionAScore,

@@ -355,7 +355,7 @@ const assessmentState = {
     deviceModel: "",
     packageName: "",
     assessorName: "",
-    assessorId: "", // Added Assessor ID
+    assessorId: "",
     assessmentDate: new Date().toISOString().split("T")[0]
   },
   scores: {
@@ -573,18 +573,105 @@ function handleOptionChange(event) {
   debouncedAutosave();
 }
 
+function updateDateDisplay() {
+  const dateInput = document.getElementById("assessmentDate");
+  const displayEl = document.getElementById("date-formatted-display");
+  if (!dateInput || !displayEl) return;
+  const val = dateInput.value;
+  if (!val) {
+    displayEl.textContent = "";
+    return;
+  }
+  try {
+    const parts = val.split("-");
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
+      displayEl.textContent = d.toLocaleDateString("en-MY", options);
+    }
+  } catch (e) {
+    displayEl.textContent = val;
+  }
+}
+
+// Strict Assessor ID format: exactly 3 letters, 1 space, 4 numbers (e.g. "MKA 9006")
+const ASSESSOR_ID_REGEX = /^[A-Z]{3} \d{4}$/;
+
+function isValidAssessorId(id) {
+  if (!id || typeof id !== "string") return false;
+  return ASSESSOR_ID_REGEX.test(id.trim());
+}
+
+function sanitizeAndFormatAssessorId(raw) {
+  if (!raw) return "";
+  const upper = raw.toUpperCase().replace(/[^A-Z0-9 ]/g, "");
+  const lettersMatch = upper.match(/^[A-Z]{0,3}/);
+  const letters = lettersMatch ? lettersMatch[0] : "";
+  const remainder = upper.slice(letters.length).replace(/[^0-9]/g, "").slice(0, 4);
+
+  if (letters.length === 3) {
+    if (remainder.length > 0) {
+      return `${letters} ${remainder}`;
+    } else if (raw.endsWith(" ") || upper.endsWith(" ")) {
+      return `${letters} `;
+    }
+  }
+  return letters;
+}
+
+function updateAssessorIdValidationUI() {
+  const el = document.getElementById("assessorId");
+  const hint = document.getElementById("assessorId-hint");
+  if (!el) return;
+
+  const val = (el.value || "").trim();
+  if (!val) {
+    el.classList.remove("is-valid", "is-invalid");
+    if (hint) {
+      hint.className = "field-hint";
+      hint.textContent = "Format: 3 letters and 4 numbers (e.g. MKA 9006)";
+    }
+    return;
+  }
+
+  if (isValidAssessorId(val)) {
+    el.classList.remove("is-invalid");
+    el.classList.add("is-valid");
+    if (hint) {
+      hint.className = "field-hint success";
+      hint.textContent = "✓ Valid Assessor ID format (e.g. MKA 9006)";
+    }
+  } else {
+    el.classList.remove("is-valid");
+    if (val.length >= 3) {
+      el.classList.add("is-invalid");
+      if (hint) {
+        hint.className = "field-hint error";
+        hint.textContent = "Format must strictly be 3 letters and 4 numbers (e.g. MKA 9006)";
+      }
+    } else {
+      el.classList.remove("is-invalid");
+      if (hint) {
+        hint.className = "field-hint";
+        hint.textContent = `Enter 3 letters and 4 numbers (e.g. MKA 9006) - ${val.length}/8 chars`;
+      }
+    }
+  }
+}
+
 function captureMetadata() {
   assessmentState.metadata.companyName = (document.getElementById("companyName")?.value || "").trim();
   assessmentState.metadata.deviceModel = (document.getElementById("deviceModel")?.value || "").trim();
   assessmentState.metadata.packageName = (document.getElementById("packageName")?.value || "").trim();
   assessmentState.metadata.assessorName = (document.getElementById("assessorName")?.value || "").trim();
-  assessmentState.metadata.assessorId = (document.getElementById("assessorId")?.value || "").trim();
+  assessmentState.metadata.assessorId = (document.getElementById("assessorId")?.value || "").trim().toUpperCase();
   assessmentState.metadata.assessmentDate = document.getElementById("assessmentDate")?.value || new Date().toISOString().split("T")[0];
+  updateDateDisplay();
   updateSectionProgressUI();
 }
 
 // ==========================================================================
-// 3a. Section Progress Sidebar & Completeness Subsystem (Feature 3)
+// 3a. Section Progress Sidebar & Completeness Subsystem
 // ==========================================================================
 
 function updateSectionProgressUI() {
@@ -599,40 +686,111 @@ function updateSectionProgressUI() {
   const secACountEl = document.getElementById("sec-a-count");
   const secAFillEl = document.getElementById("sec-a-progress-fill");
   const secAPctEl = document.getElementById("sec-a-pct");
+  const secAStatusEl = document.getElementById("sec-a-status-badge") || document.getElementById("sec-a-status");
+  const secAIconEl = document.getElementById("sec-a-check-icon");
   const pctA = Math.round((answeredA / 24) * 100);
 
   if (secACountEl) secACountEl.textContent = answeredA;
-  if (secAFillEl) secAFillEl.style.width = `${(answeredA / 24) * 100}%`;
+  if (secAFillEl) {
+    secAFillEl.style.width = `${(answeredA / 24) * 100}%`;
+    secAFillEl.style.background = answeredA === 24 ? "#10B981" : "#F58220";
+  }
   if (secAPctEl) secAPctEl.textContent = `${pctA}% answered`;
+  if (secAStatusEl) {
+    if (answeredA === 24) {
+      secAStatusEl.textContent = "Complete";
+      secAStatusEl.className = "nav-status-badge complete";
+      if (secAIconEl) {
+        secAIconEl.textContent = "✓";
+        secAIconEl.className = "status-icon-complete";
+      }
+    } else if (answeredA > 0) {
+      secAStatusEl.textContent = "In Progress";
+      secAStatusEl.className = "nav-status-badge progress";
+      if (secAIconEl) {
+        secAIconEl.textContent = "○";
+        secAIconEl.className = "status-icon-pending";
+      }
+    } else {
+      secAStatusEl.textContent = "Not Started";
+      secAStatusEl.className = "nav-status-badge empty";
+      if (secAIconEl) {
+        secAIconEl.textContent = "○";
+        secAIconEl.className = "status-icon-pending";
+      }
+    }
+  }
 
   // Update Section B elements
   const secBCountEl = document.getElementById("sec-b-count");
   const secBFillEl = document.getElementById("sec-b-progress-fill");
   const secBPctEl = document.getElementById("sec-b-pct");
+  const secBStatusEl = document.getElementById("sec-b-status-badge") || document.getElementById("sec-b-status");
+  const secBIconEl = document.getElementById("sec-b-check-icon");
   const pctB = Math.round((answeredB / 9) * 100);
 
   if (secBCountEl) secBCountEl.textContent = answeredB;
-  if (secBFillEl) secBFillEl.style.width = `${(answeredB / 9) * 100}%`;
+  if (secBFillEl) {
+    secBFillEl.style.width = `${(answeredB / 9) * 100}%`;
+    secBFillEl.style.background = answeredB === 9 ? "#10B981" : "#F58220";
+  }
   if (secBPctEl) secBPctEl.textContent = `${pctB}% answered`;
+  if (secBStatusEl) {
+    if (answeredB === 9) {
+      secBStatusEl.textContent = "Complete";
+      secBStatusEl.className = "nav-status-badge complete";
+      if (secBIconEl) {
+        secBIconEl.textContent = "✓";
+        secBIconEl.className = "status-icon-complete";
+      }
+    } else if (answeredB > 0) {
+      secBStatusEl.textContent = "In Progress";
+      secBStatusEl.className = "nav-status-badge progress";
+      if (secBIconEl) {
+        secBIconEl.textContent = "○";
+        secBIconEl.className = "status-icon-pending";
+      }
+    } else {
+      secBStatusEl.textContent = "Not Started";
+      secBStatusEl.className = "nav-status-badge empty";
+      if (secBIconEl) {
+        secBIconEl.textContent = "○";
+        secBIconEl.className = "status-icon-pending";
+      }
+    }
+  }
 
-  // Update Overall badge and progress track
-  const overallBadgeEl = document.getElementById("overall-progress-badge");
+  // Update Overall count and progress elements
+  const overallCountEl = document.getElementById("overall-count-num");
+  if (overallCountEl) {
+    overallCountEl.textContent = totalAnswered;
+  }
+
+  const overallBadgeEl = document.getElementById("sec-total-progress-badge") || document.getElementById("overall-progress-badge");
   const overallPctEl = document.getElementById("overall-progress-pct");
   const overallFillEl = document.getElementById("overall-progress-fill");
   const overallPctVal = Math.round((totalAnswered / totalCriteria) * 100);
 
   if (overallBadgeEl) {
-    overallBadgeEl.textContent = `${totalAnswered}/${totalCriteria} Completed`;
+    overallBadgeEl.textContent = `${totalAnswered} / ${totalCriteria} completed`;
     if (totalAnswered === totalCriteria) {
-      overallBadgeEl.style.background = "#ECFDF5";
-      overallBadgeEl.style.color = "#065F46";
+      overallBadgeEl.className = "sidebar-status-badge badge-complete";
+    } else if (totalAnswered > 0) {
+      overallBadgeEl.className = "sidebar-status-badge badge-progress";
     } else {
-      overallBadgeEl.style.background = "#F1F5F9";
-      overallBadgeEl.style.color = "#475569";
+      overallBadgeEl.className = "sidebar-status-badge badge-empty";
     }
   }
 
-  if (overallPctEl) overallPctEl.textContent = `${overallPctVal}%`;
+  const stickyCriteriaCount = document.getElementById("sticky-criteria-answered");
+  if (stickyCriteriaCount) {
+    stickyCriteriaCount.textContent = `${totalAnswered}/${totalCriteria}`;
+  }
+
+  if (overallPctEl) {
+    overallPctEl.textContent = `${overallPctVal}%`;
+    overallPctEl.className = overallPctVal === 100 ? "progress-pct-badge pct-complete" : "progress-pct-badge";
+  }
   if (overallFillEl) {
     overallFillEl.style.width = `${overallPctVal}%`;
     overallFillEl.style.background = totalAnswered === totalCriteria ? "#10B981" : "#F58220";
@@ -640,22 +798,28 @@ function updateSectionProgressUI() {
 
   // Update Metadata status indicator
   const metaStatusEl = document.getElementById("sidebar-meta-status");
+  const metaIconEl = document.getElementById("meta-check-icon");
   const hasMeta = !!(
     assessmentState.metadata.companyName &&
     assessmentState.metadata.deviceModel &&
-    assessmentState.metadata.assessorName &&
-    assessmentState.metadata.assessorId
+    assessmentState.metadata.assessorName
   );
 
   if (metaStatusEl) {
     if (hasMeta) {
       metaStatusEl.textContent = "Complete";
-      metaStatusEl.style.color = "#065F46";
-      metaStatusEl.style.background = "#ECFDF5";
+      metaStatusEl.className = "nav-status-badge complete";
+      if (metaIconEl) {
+        metaIconEl.textContent = "✓";
+        metaIconEl.className = "status-icon-complete";
+      }
     } else {
       metaStatusEl.textContent = "Pending";
-      metaStatusEl.style.color = "#94A3B8";
-      metaStatusEl.style.background = "#F1F5F9";
+      metaStatusEl.className = "nav-status-badge pending";
+      if (metaIconEl) {
+        metaIconEl.textContent = "○";
+        metaIconEl.className = "status-icon-pending";
+      }
     }
   }
 
@@ -760,7 +924,6 @@ function migrateOldDraftIfNeeded() {
         deviceModel: oldDraft.metadata?.deviceModel || "Unspecified Model",
         packageName: oldDraft.metadata?.packageName || "",
         assessorName: oldDraft.metadata?.assessorName || "",
-        assessorId: oldDraft.metadata?.assessorId || "",
         lastSavedAt: oldDraft.timestamp || new Date().toISOString(),
         formattedTime: oldDraft.formattedTime || new Date().toLocaleString(),
         rubricVersion: oldDraft.metadata?.rubricVersion || "1.0",
@@ -833,21 +996,27 @@ function updateDraftsCountUI() {
   const drafts = getDrafts();
   const count = Object.keys(drafts).length;
   const headerCountEl = document.getElementById("header-drafts-count");
+  const headerTopCountEl = document.getElementById("header-drafts-count-top");
   const modalCountEl = document.getElementById("modal-drafts-count");
   if (headerCountEl) headerCountEl.textContent = count;
+  if (headerTopCountEl) headerTopCountEl.textContent = count;
   if (modalCountEl) modalCountEl.textContent = count;
 }
 
 function serializeDraft(draftId) {
   captureMetadata();
   const selections = {};
+  const answeredCriteria = assessmentState.answeredCriteria || {};
+
   Object.entries(assessmentState.selectedItems).forEach(([critId, item]) => {
+    const isAnswered = !!answeredCriteria[critId];
     selections[critId] = {
       section: item.section,
       id: item.id,
       name: item.name,
       selectedOption: item.selectedOption,
-      points: item.points
+      points: item.points,
+      isAnswered: isAnswered
     };
   });
 
@@ -869,7 +1038,7 @@ function serializeDraft(draftId) {
     formState: {
       metadata: { ...assessmentState.metadata },
       selections,
-      answeredCriteria: { ...assessmentState.answeredCriteria },
+      answeredCriteria: { ...answeredCriteria },
       scores: { ...assessmentState.scores }
     }
   };
@@ -882,79 +1051,103 @@ function saveDraftToStorage(isManual = false, forceNew = false) {
 
     const companyInput = document.getElementById("companyName");
     const currentCompany = (companyInput?.value || assessmentState.metadata?.companyName || "").trim();
+    const deviceInput = document.getElementById("deviceModel");
+    const currentDevice = (deviceInput?.value || assessmentState.metadata?.deviceModel || "").trim();
+    const answeredCount = assessmentState.answeredCriteria ? Object.keys(assessmentState.answeredCriteria).length : 0;
 
-    // 1. Force New Draft mode (e.g. user clicked "Save as New Draft")
+    // Guard: Do not autosave a completely untouched empty form
+    if (!isManual && !currentCompany && !currentDevice && answeredCount === 0) {
+      return false;
+    }
+
+    let targetDraftId = null;
+
+    // Case 1: Force New Draft mode (e.g. user clicked "Save Form as New Draft")
     if (forceNew) {
       if (draftKeys.length >= MAX_DRAFTS) {
-        const warning = "You have reached the maximum of 3 saved drafts. Please submit or discard an existing draft before saving a new one.";
+        const warning = `You have reached the maximum of ${MAX_DRAFTS} saved drafts. Please submit or discard an existing draft before saving a new one.`;
         showToast(warning, true);
         openDraftsModal(warning);
         return false;
       }
-      assessmentState.activeDraftId = generateDraftId();
+      targetDraftId = generateDraftId();
+      assessmentState.activeDraftId = targetDraftId;
     }
-    // 2. An active draft is loaded in the form
+    // Case 2: An active draft is currently loaded in this form session
     else if (assessmentState.activeDraftId && drafts[assessmentState.activeDraftId]) {
-      const existing = drafts[assessmentState.activeDraftId];
-      const existingCompany = (existing.companyName || "").trim();
+      const activeDraft = drafts[assessmentState.activeDraftId];
+      const savedCompany = (activeDraft.companyName || "").trim().toLowerCase();
+      const currentCompanyLower = currentCompany.toLowerCase();
 
-      const isExistingUntitled = !existingCompany || existingCompany.toLowerCase() === "untitled company";
-      const isCurrentNamed = currentCompany && currentCompany.toLowerCase() !== "untitled company";
-      const isDifferentCompany = !isExistingUntitled && isCurrentNamed && currentCompany.toLowerCase() !== existingCompany.toLowerCase();
+      // Detect if user changed the company name to a completely different company
+      const isDifferentCompany = savedCompany && currentCompanyLower &&
+                                 savedCompany !== "untitled company" &&
+                                 currentCompanyLower !== "untitled company" &&
+                                 savedCompany !== currentCompanyLower;
 
-      // If the user has typed in a distinctly different company evaluation
       if (isDifferentCompany) {
+        // User changed company: this is a different evaluation!
         if (draftKeys.length < MAX_DRAFTS) {
-          // Branch into a separate new draft so the existing draft is preserved
-          assessmentState.activeDraftId = generateDraftId();
+          // Space available (< 3 drafts): branch into a NEW separate draft so the previous company draft is NOT destroyed
+          targetDraftId = generateDraftId();
+          assessmentState.activeDraftId = targetDraftId;
         } else {
-          // Already have 3 saved drafts in storage
+          // Already have 3 drafts in storage: we cannot create a 4th, and we must NEVER overwrite the existing draft
           if (isManual) {
-            const warning = `You have reached the maximum of 3 saved drafts. Discard or submit an existing draft to save a new one for "${currentCompany}".`;
+            const warning = `You have reached the maximum of ${MAX_DRAFTS} saved drafts. Discard or submit an existing draft before saving a new one for "${currentCompany}".`;
             showToast(warning, true);
             openDraftsModal(warning);
           }
           return false;
         }
+      } else {
+        // Same company / continuing work on this active draft: update in place
+        targetDraftId = assessmentState.activeDraftId;
       }
     }
-    // 3. No active draft currently bound to the form
-    else if (!assessmentState.activeDraftId) {
-      if (draftKeys.length >= MAX_DRAFTS) {
+    // Case 3: No active draft currently loaded in session (e.g. after clicking "New Evaluation" or fresh form)
+    else {
+      // Check if space is available for a new draft (< MAX_DRAFTS)
+      if (draftKeys.length < MAX_DRAFTS) {
+        // Allocate a brand new draft ID so existing drafts are fully preserved
+        targetDraftId = generateDraftId();
+        assessmentState.activeDraftId = targetDraftId;
+      } else {
+        // Storage has reached maximum 3 drafts: DO NOT OVERWRITE ANY EXISTING DRAFT!
         if (isManual) {
-          const warning = "You have reached the maximum of 3 saved drafts. Please submit or discard an existing draft before starting a new one.";
+          const warning = `You have reached the maximum of ${MAX_DRAFTS} saved drafts. Please open Drafts to resume one or discard one to make room.`;
           showToast(warning, true);
           openDraftsModal(warning);
         }
         return false;
       }
-      assessmentState.activeDraftId = generateDraftId();
     }
 
-    const draftId = assessmentState.activeDraftId;
-    const draft = serializeDraft(draftId);
-    drafts[draftId] = draft;
+    const draft = serializeDraft(targetDraftId);
+    drafts[targetDraftId] = draft;
     saveDrafts(drafts);
+    localStorage.setItem("trackscore-active-draft-id", targetDraftId);
     updateDraftsCountUI();
 
     const indicator = document.getElementById("autosave-indicator");
-    const timeStr = new Date().toLocaleTimeString();
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const countNow = Object.keys(drafts).length;
     const displayName = draft.companyName && draft.companyName !== "Untitled Company" ? draft.companyName : "Evaluation";
 
     if (indicator) {
-      indicator.textContent = isManual
-        ? `Draft "${displayName}" manually saved at ${timeStr} (${countNow}/${MAX_DRAFTS})`
-        : `Autosaved draft "${displayName}" at ${timeStr} (${countNow}/${MAX_DRAFTS})`;
+      indicator.innerHTML = isManual
+        ? `<span style="color: #10B981; font-weight: 600;">✓ Saved:</span> Draft "${escapeHtml(displayName)}" saved at ${timeStr} (${countNow}/${MAX_DRAFTS} drafts in storage)`
+        : `<span style="color: #64748B;">Autosaved:</span> "${escapeHtml(displayName)}" at ${timeStr} (${countNow}/${MAX_DRAFTS} drafts in storage)`;
     }
 
     if (isManual) {
-      showToast(`Draft "${displayName}" saved successfully (${countNow}/${MAX_DRAFTS})`);
+      showToast(`Draft "${displayName}" saved (${countNow}/${MAX_DRAFTS} drafts in storage)`);
       const buttons = [
         document.getElementById("btn-save-draft"),
         document.getElementById("btn-save-draft-top"),
         document.getElementById("btn-save-as-new"),
-        document.getElementById("btn-save-as-new-top")
+        document.getElementById("btn-save-as-new-top"),
+        document.getElementById("btn-save-as-new-modal")
       ];
       buttons.forEach(btn => {
         if (btn) {
@@ -972,7 +1165,10 @@ function saveDraftToStorage(isManual = false, forceNew = false) {
 }
 
 function saveDraftAsNew() {
-  saveDraftToStorage(true, true);
+  const res = saveDraftToStorage(true, true);
+  if (res) {
+    renderDraftsModal();
+  }
 }
 
 function debouncedAutosave() {
@@ -992,6 +1188,10 @@ function clearDraftFromStorage(draftIdToClear = null) {
         delete drafts[targetId];
         saveDrafts(drafts);
       }
+    }
+    const storedActive = localStorage.getItem("trackscore-active-draft-id");
+    if (targetId && storedActive === targetId) {
+      localStorage.removeItem("trackscore-active-draft-id");
     }
     if (!draftIdToClear || draftIdToClear === assessmentState.activeDraftId) {
       assessmentState.activeDraftId = null;
@@ -1013,6 +1213,7 @@ function discardDraft(draftId) {
   clearDraftFromStorage(draftId);
   if (wasActive) {
     assessmentState.activeDraftId = null;
+    localStorage.removeItem("trackscore-active-draft-id");
     hideRubricWarning();
     const indicator = document.getElementById("autosave-indicator");
     if (indicator) indicator.textContent = "Draft discarded.";
@@ -1039,6 +1240,7 @@ function hideRubricWarning() {
 function restoreDraft(draft) {
   if (!draft) return;
   assessmentState.activeDraftId = draft.draftId;
+  localStorage.setItem("trackscore-active-draft-id", draft.draftId);
 
   // Check for rubric version mismatch (Requirement 1)
   const draftVersion = draft.rubricVersion || (draft.formState?.metadata?.rubricVersion) || "1.0";
@@ -1070,7 +1272,10 @@ function restoreDraft(draft) {
     }
     if (state.metadata.assessorId !== undefined) {
       const el = document.getElementById("assessorId");
-      if (el) el.value = state.metadata.assessorId;
+      if (el) {
+        el.value = state.metadata.assessorId;
+        updateAssessorIdValidationUI();
+      }
     }
     if (state.metadata.assessmentDate !== undefined) {
       const el = document.getElementById("assessmentDate");
@@ -1081,29 +1286,55 @@ function restoreDraft(draft) {
 
   // 2. Clear current selections and restore saved ones
   assessmentState.selectedItems = {};
+  assessmentState.answeredCriteria = {};
   document.querySelectorAll('input[type="radio"][data-crit-id]').forEach(r => { r.checked = false; });
-  document.querySelectorAll('.criteria-item').forEach(el => el.classList.remove('has-score'));
-  document.querySelectorAll('.points-awarded').forEach(el => {
-    el.classList.remove('scored');
-    el.textContent = '0.00 pts';
+  document.querySelectorAll('.criterion-row').forEach(el => el.classList.remove('has-score'));
+
+  // Reset all criterion badges to their default Max Points display
+  const allCriteria = [...SECTION_A_CRITERIA, ...SECTION_B_CRITERIA];
+  allCriteria.forEach(criterion => {
+    const badgeEl = document.getElementById(`badge-${criterion.id}`);
+    if (badgeEl) {
+      badgeEl.classList.remove('scored');
+      const maxPts = Math.max(...criterion.options.map(o => o.points));
+      badgeEl.textContent = `Max ${maxPts.toFixed(2)} pts`;
+    }
+    // Default initial selected item for baseline calculations
+    assessmentState.selectedItems[criterion.id] = {
+      section: criterion.section || (criterion.id.startsWith("1.") || criterion.id.startsWith("2.") ? "A" : "B"),
+      id: criterion.id,
+      name: criterion.name,
+      selectedOption: "None (0)",
+      points: 0.0
+    };
   });
+
+  const savedAnswered = state.answeredCriteria || {};
 
   if (state.selections) {
     Object.entries(state.selections).forEach(([critId, sel]) => {
-      let radio = document.querySelector(`input[data-crit-id="${critId}"][data-label="${sel.selectedOption}"]`);
-      if (!radio && typeof sel.points === 'number') {
-        radio = document.querySelector(`input[data-crit-id="${critId}"][value="${sel.points}"]`);
+      // CRITICAL: A criterion should ONLY be marked/checked if it was ACTUALLY answered by the user!
+      const wasAnswered = !!(savedAnswered[critId] || sel.isAnswered || (typeof sel.points === 'number' && sel.points > 0));
+      if (!wasAnswered) return;
+
+      const radios = Array.from(document.querySelectorAll(`input[type="radio"][data-crit-id="${critId}"]`));
+      let matchingRadio = radios.find(r => r.getAttribute("data-label") === sel.selectedOption);
+      if (!matchingRadio && typeof sel.points === 'number') {
+        matchingRadio = radios.find(r => parseFloat(r.value) === sel.points);
       }
-      if (radio) {
-        radio.checked = true;
-        const points = parseFloat(radio.value);
-        const section = radio.getAttribute("data-section");
-        const critName = radio.getAttribute("data-crit-name");
+
+      if (matchingRadio) {
+        matchingRadio.checked = true;
+        const points = parseFloat(matchingRadio.value);
+        const section = matchingRadio.getAttribute("data-section") || sel.section;
+        const critName = matchingRadio.getAttribute("data-crit-name") || sel.name;
+        
+        assessmentState.answeredCriteria[critId] = true;
         assessmentState.selectedItems[critId] = {
           section,
           id: critId,
           name: critName,
-          selectedOption: sel.selectedOption,
+          selectedOption: matchingRadio.getAttribute("data-label") || sel.selectedOption,
           points
         };
 
@@ -1126,15 +1357,6 @@ function restoreDraft(draft) {
     });
   }
 
-  assessmentState.answeredCriteria = {};
-  if (state.answeredCriteria) {
-    assessmentState.answeredCriteria = { ...state.answeredCriteria };
-  } else if (state.selections) {
-    Object.keys(state.selections).forEach(k => {
-      assessmentState.answeredCriteria[k] = true;
-    });
-  }
-
   calculateScores();
   updateSectionProgressUI();
 
@@ -1142,8 +1364,11 @@ function restoreDraft(draft) {
   if (banner) banner.style.display = "none";
 
   const indicator = document.getElementById("autosave-indicator");
+  const answeredCount = Object.keys(assessmentState.answeredCriteria).length;
+  const drafts = getDrafts();
+  const countNow = Object.keys(drafts).length;
   if (indicator) {
-    indicator.textContent = `Resumed draft: ${draft.companyName || 'Evaluation'} (saved ${formatRelativeTime(draft.lastSavedAt)})`;
+    indicator.innerHTML = `<span style="color: #10B981; font-weight: 600;">Active Draft:</span> "${escapeHtml(draft.companyName || 'Evaluation')}" (${answeredCount}/33 criteria) &bull; In Storage: <strong>${countNow}/${MAX_DRAFTS}</strong> &bull; <a href="javascript:void(0)" onclick="openDraftsModal()" style="color: #2563EB; font-weight: 600; text-decoration: underline;">Switch Draft</a> &bull; <a href="javascript:void(0)" onclick="startNewEvaluation()" style="color: #2563EB; font-weight: 600; text-decoration: underline;">New Evaluation</a>`;
   }
 }
 
@@ -1152,14 +1377,15 @@ function startNewEvaluation() {
   const count = Object.keys(drafts).length;
 
   if (count >= MAX_DRAFTS) {
-    const warning = "You have reached the maximum of 3 saved drafts. Please submit or discard an existing draft before starting a new one.";
+    const warning = `You have reached the maximum of ${MAX_DRAFTS} saved drafts. Please submit or discard an existing draft before starting a new one.`;
     openDraftsModal(warning);
-    showToast("Maximum of 3 drafts reached. Discard or submit one first.", true);
+    showToast(`Maximum of ${MAX_DRAFTS} drafts reached. Discard or submit one first.`, true);
     return false;
   }
 
   clearTimeout(autosaveTimer);
   assessmentState.activeDraftId = null;
+  localStorage.removeItem("trackscore-active-draft-id");
   assessmentState.resubmitRecordId = null;
   hideRubricWarning();
 
@@ -1175,7 +1401,15 @@ function startNewEvaluation() {
   if (deviceEl) deviceEl.value = "";
   if (packageEl) packageEl.value = "";
   if (assessorEl) assessorEl.value = "";
-  if (assessorIdEl) assessorIdEl.value = "";
+  if (assessorIdEl) {
+    assessorIdEl.value = "";
+    assessorIdEl.classList.remove("is-valid", "is-invalid");
+    const hint = document.getElementById("assessorId-hint");
+    if (hint) {
+      hint.className = "field-hint";
+      hint.textContent = "Format: 3 letters and 4 numbers (e.g. MKA 9006)";
+    }
+  }
   if (dateEl) dateEl.value = new Date().toISOString().split("T")[0];
 
   assessmentState.selectedItems = {};
@@ -1193,11 +1427,11 @@ function startNewEvaluation() {
 
   const indicator = document.getElementById("autosave-indicator");
   if (indicator) {
-    indicator.textContent = `New evaluation ready (Drafts in storage: ${count}/${MAX_DRAFTS})`;
+    indicator.innerHTML = `<span style="color: #64748B;">Fresh evaluation ready</span> (Saved drafts: ${count}/${MAX_DRAFTS})`;
   }
 
   updateDraftsCountUI();
-  showToast("Started fresh evaluation form. Enter company details to save as new draft.");
+  showToast("Started fresh evaluation form. Enter details to save as draft.");
   return true;
 }
 
@@ -1241,10 +1475,10 @@ function renderDraftsModal(warningMsg = null) {
 
   if (count === 0) {
     container.innerHTML = `
-      <div class="empty-state-box" style="padding: 32px 16px; margin: 8px 0;">
-        <div class="empty-state-icon" style="width: 44px; height: 44px; margin-bottom: 10px;">📋</div>
-        <div class="empty-state-title" style="font-size: 15px;">No In-Progress Drafts</div>
-        <div class="empty-state-subtitle" style="font-size: 13px; margin-bottom: 12px;">You do not have any evaluations saved in draft state. Click "Start New Evaluation" to begin.</div>
+      <div class="empty-state-box" style="padding: 32px 16px; margin: 8px 0; text-align: center;">
+        <div class="empty-state-icon" style="width: 44px; height: 44px; margin: 0 auto 10px auto; font-size: 28px;">📋</div>
+        <div class="empty-state-title" style="font-size: 15px; font-weight: 700; color: #1E293B;">No In-Progress Drafts</div>
+        <div class="empty-state-subtitle" style="font-size: 13px; color: #64748B; margin-bottom: 12px;">You do not have any evaluations saved in draft state. Click "Start New Evaluation" to begin.</div>
       </div>
     `;
     return;
@@ -1255,26 +1489,29 @@ function renderDraftsModal(warningMsg = null) {
     const isActive = assessmentState.activeDraftId === draft.draftId;
     const isRubricMismatch = draft.rubricVersion && draft.rubricVersion !== RUBRIC_VERSION;
     const relativeTime = formatRelativeTime(draft.lastSavedAt);
+    const answeredCount = draft.formState?.answeredCriteria ? Object.keys(draft.formState.answeredCriteria).length : 0;
 
     html += `
       <div class="draft-card ${isActive ? 'active-draft' : ''}" id="draft-card-${draft.draftId}">
         <div class="draft-card-info">
           <div class="draft-card-title">
             ${escapeHtml(draft.companyName || "Untitled Company")} — ${escapeHtml(draft.deviceModel || "Unspecified Model")}
-            ${isActive ? '<span style="font-size: 11px; background: #FEF3C7; color: #B45309; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 6px;">CURRENT</span>' : ''}
+            ${isActive ? '<span style="font-size: 11px; background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; padding: 2px 7px; border-radius: 9999px; font-weight: 700; margin-left: 8px;">CURRENT</span>' : ''}
           </div>
           <div class="draft-card-meta">
-            <span>👤 Assessor: <strong>${escapeHtml(draft.assessorName || "Unassigned")}</strong></span>
+            <span>👤 Assessor: <strong>${escapeHtml(draft.assessorName || "Unassigned")}</strong>${draft.assessorId ? ` <span style="color:#0284C7; font-family: monospace;">[${escapeHtml(draft.assessorId)}]</span>` : ''}</span>
+            <span>&bull;</span>
+            <span>📊 Progress: <strong>${answeredCount}/33 criteria</strong></span>
             <span>&bull;</span>
             <span>🕒 Saved: <strong>${escapeHtml(relativeTime)}</strong></span>
             ${isRubricMismatch ? `<span class="rubric-badge-warning" title="Started under rubric v${escapeHtml(draft.rubricVersion)}">⚠️ Old Rubric (v${escapeHtml(draft.rubricVersion)})</span>` : ''}
           </div>
         </div>
         <div class="draft-card-actions" id="actions-${draft.draftId}">
-          <button type="button" class="btn btn-primary btn-sm" data-action="resume" data-draft-id="${draft.draftId}" onclick="handleResumeDraftClick('${draft.draftId}')">
+          <button type="button" class="btn ${isActive ? 'btn-secondary' : 'btn-primary'} btn-sm" data-action="resume" data-draft-id="${draft.draftId}">
             ${isActive ? 'Active' : 'Resume'}
           </button>
-          <button type="button" class="btn btn-secondary btn-sm" data-action="discard" data-draft-id="${draft.draftId}" style="color: #DC2626; border-color: #FECACA;" onclick="handleDiscardDraftClick('${draft.draftId}')">
+          <button type="button" class="btn btn-secondary btn-sm" data-action="discard" data-draft-id="${draft.draftId}" style="color: #DC2626; border-color: #FECACA;">
             Discard
           </button>
         </div>
@@ -1300,10 +1537,10 @@ window.handleDiscardDraftClick = function(draftId) {
   if (actionsContainer) {
     actionsContainer.innerHTML = `
       <div style="display: inline-flex; align-items: center; gap: 6px;">
-        <button type="button" class="btn btn-sm" data-action="confirm-discard" data-draft-id="${draftId}" style="background: #DC2626; color: #FFFFFF; border: 1px solid #DC2626; font-weight: 600; padding: 4px 8px; font-size: 12px;" onclick="discardDraft('${draftId}')">
+        <button type="button" class="btn btn-sm" data-action="confirm-discard" data-draft-id="${draftId}" style="background: #DC2626; color: #FFFFFF; border: 1px solid #DC2626; font-weight: 600; padding: 4px 8px; font-size: 12px;">
           ⚠️ Confirm Discard
         </button>
-        <button type="button" class="btn btn-secondary btn-sm" data-action="cancel-discard" data-draft-id="${draftId}" style="padding: 4px 8px; font-size: 12px;" onclick="renderDraftsModal()">
+        <button type="button" class="btn btn-secondary btn-sm" data-action="cancel-discard" data-draft-id="${draftId}" style="padding: 4px 8px; font-size: 12px;">
           Cancel
         </button>
       </div>
@@ -1320,6 +1557,14 @@ function checkExistingDraft() {
   const draftList = Object.values(drafts).sort((a, b) => new Date(b.lastSavedAt || 0) - new Date(a.lastSavedAt || 0));
   const banner = document.getElementById("draft-banner");
   const timeEl = document.getElementById("draft-banner-time");
+
+  // If there's an active draft stored from the previous session, automatically resume it
+  const storedActiveId = localStorage.getItem("trackscore-active-draft-id");
+  if (storedActiveId && drafts[storedActiveId] && !assessmentState.activeDraftId) {
+    restoreDraft(drafts[storedActiveId]);
+    if (banner) banner.style.display = "none";
+    return;
+  }
 
   if (draftList.length === 1 && !assessmentState.activeDraftId) {
     const single = draftList[0];
@@ -1346,17 +1591,19 @@ function checkExistingDraft() {
     }
   } else if (draftList.length > 1 && !assessmentState.activeDraftId) {
     if (banner && timeEl) {
-      timeEl.innerHTML = `<strong>${draftList.length} saved drafts</strong> in progress`;
+      timeEl.innerHTML = `<strong>${draftList.length} saved drafts</strong> in progress (max ${MAX_DRAFTS})`;
       banner.style.display = "flex";
       const btnResume = document.getElementById("btn-resume-draft");
       const btnDiscard = document.getElementById("btn-discard-draft");
       if (btnResume) {
-        btnResume.textContent = "Choose Draft";
+        btnResume.textContent = "View All Drafts";
         btnResume.onclick = () => openDraftsModal();
       }
       if (btnDiscard) {
-        btnDiscard.textContent = "View All";
-        btnDiscard.onclick = () => openDraftsModal();
+        btnDiscard.textContent = "Dismiss";
+        btnDiscard.onclick = () => {
+          banner.style.display = "none";
+        };
       }
     }
   } else {
@@ -1375,12 +1622,14 @@ function openLookupModal() {
   modal.classList.add("active");
   modal.setAttribute("aria-hidden", "false");
 
-  // Pre-fill with current Assessor ID if present
+  // Pre-fill with current Assessor ID or Assessor Name if present
   const currentAssessorId = (document.getElementById("assessorId")?.value || "").trim();
+  const currentAssessorName = (document.getElementById("assessorName")?.value || "").trim();
+  const defaultQuery = currentAssessorId || currentAssessorName;
   const input = document.getElementById("lookup-assessor-input");
-  if (input && currentAssessorId && !input.value) {
-    input.value = currentAssessorId;
-    lookupAssessorSubmissions(currentAssessorId);
+  if (input && defaultQuery && !input.value) {
+    input.value = defaultQuery;
+    lookupAssessorSubmissions(defaultQuery);
   } else if (input && input.value) {
     lookupAssessorSubmissions(input.value);
   }
@@ -1445,7 +1694,7 @@ async function lookupAssessorSubmissions(queryStr) {
             <div>
               <div style="font-weight: 700; color: #1E293B; font-size: 14px;">${escapeHtml(sub.companyName)} — ${escapeHtml(sub.deviceModel)}</div>
               <div style="font-size: 12px; color: #64748B; margin-top: 2px;">
-                Assessor: <strong>${escapeHtml(sub.assessorName)}</strong> &bull; Date: ${escapeHtml(recordDate)}
+                Assessor: <strong>${escapeHtml(sub.assessorName)}</strong>${sub.assessorId ? ` <span style="color: #0284C7; font-family: monospace;">[${escapeHtml(sub.assessorId)}]</span>` : ''} &bull; Date: ${escapeHtml(recordDate)}
               </div>
             </div>
             <div>
@@ -1516,7 +1765,10 @@ async function loadEvaluationForCorrection(recordId) {
     if (document.getElementById("deviceModel")) document.getElementById("deviceModel").value = doc.deviceModel || "";
     if (document.getElementById("packageName")) document.getElementById("packageName").value = doc.packageName || "";
     if (document.getElementById("assessorName")) document.getElementById("assessorName").value = doc.assessorName || "";
-    if (document.getElementById("assessorId")) document.getElementById("assessorId").value = doc.assessorId || "";
+    if (document.getElementById("assessorId")) {
+      document.getElementById("assessorId").value = doc.assessorId || "";
+      updateAssessorIdValidationUI();
+    }
     if (document.getElementById("assessmentDate") && doc.assessmentDate) document.getElementById("assessmentDate").value = doc.assessmentDate;
     captureMetadata();
 
@@ -1590,7 +1842,7 @@ let currentReportFilename = "";
 function generatePdfReport() {
   captureMetadata();
 
-  const { companyName, deviceModel, packageName, assessorName, assessmentDate } = assessmentState.metadata;
+  const { companyName, deviceModel, packageName, assessorName, assessorId, assessmentDate } = assessmentState.metadata;
   const { sectionA, sectionB, total, starRating, starsCount, ratingLabel } = assessmentState.scores;
 
   if (!companyName || !deviceModel || !assessorName) {
@@ -1690,8 +1942,8 @@ function generatePdfReport() {
           <tr>
             <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #64748B; text-transform: uppercase;">Package:</td>
             <td style="padding: 2.5px 5px; font-size: 10.5px; font-weight: 700; color: #0F172A;">${escapeHtml(packageName || "Standard Evaluation Package")}</td>
-            <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #64748B; text-transform: uppercase;">Rubric Version:</td>
-            <td style="padding: 2.5px 5px; font-size: 10.5px; font-weight: 700; color: #0F172A;">v1.0 (33 Criteria / 43 Pts)</td>
+            <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #64748B; text-transform: uppercase;">Assessor ID:</td>
+            <td style="padding: 2.5px 5px; font-size: 10.5px; font-weight: 700; color: #0284C7; font-family: monospace;">${escapeHtml(assessorId || "N/A")}</td>
           </tr>
         </table>
       </div>
@@ -1944,11 +2196,29 @@ async function saveEvaluationToDatabase() {
   const { companyName, deviceModel, packageName, assessorName, assessorId } = assessmentState.metadata;
   const { sectionA, sectionB, total, starRating, starsCount, ratingLabel } = assessmentState.scores;
 
-  if (!companyName || !deviceModel || !assessorName || !assessorId) {
-    const errorMsg = "Please fill in Company Name, Device Model, Assessor Name, and Assessor ID before saving.";
+  if (!companyName || !deviceModel || !assessorName) {
+    const errorMsg = "Please fill in Company Name, Device Model, and Assessor Name before saving.";
     showFormAlert(errorMsg, "warning");
     showToast(errorMsg, true);
-    document.getElementById("companyName")?.focus();
+    if (!companyName) document.getElementById("companyName")?.focus();
+    else if (!deviceModel) document.getElementById("deviceModel")?.focus();
+    else document.getElementById("assessorName")?.focus();
+    return;
+  }
+
+  if (!assessorId) {
+    const errorMsg = "Please enter an Assessor ID (e.g. MKA 9006) before saving.";
+    showFormAlert(errorMsg, "warning");
+    showToast(errorMsg, true);
+    document.getElementById("assessorId")?.focus();
+    return;
+  }
+
+  if (!isValidAssessorId(assessorId)) {
+    const errorMsg = "Assessor ID must strictly follow 3 letters and 4 numbers (e.g. MKA 9006).";
+    showFormAlert(errorMsg, "warning");
+    showToast(errorMsg, true);
+    document.getElementById("assessorId")?.focus();
     return;
   }
 
@@ -1999,7 +2269,7 @@ async function saveEvaluationToDatabase() {
     deviceModel,
     packageName: packageName || "Standard Package",
     assessorName,
-    assessorId,
+    assessorId: assessorId.toUpperCase(),
     assessmentDate: assessmentState.metadata.assessmentDate,
     rubricVersion: assessmentState.rubricVersion || RUBRIC_VERSION,
     sectionAScore: sectionA,
@@ -2081,6 +2351,78 @@ async function saveEvaluationToDatabase() {
       saveBtn.disabled = false;
       saveBtn.innerHTML = originalHtml;
     }
+  }
+}
+
+// ==========================================================================
+// 5a. Submission Confirmation Modal Subsystem
+// ==========================================================================
+
+function openSubmitConfirmModal() {
+  captureMetadata();
+  const { companyName, deviceModel, assessorName, assessorId } = assessmentState.metadata;
+  const { total, starsCount, ratingLabel } = assessmentState.scores;
+
+  if (!companyName) {
+    showToast("Please enter Company Name before submitting.", true);
+    document.getElementById("companyName")?.focus();
+    return;
+  }
+  if (!deviceModel) {
+    showToast("Please enter Device Model before submitting.", true);
+    document.getElementById("deviceModel")?.focus();
+    return;
+  }
+  if (!assessorName) {
+    showToast("Please enter Assessor Name before submitting.", true);
+    document.getElementById("assessorName")?.focus();
+    return;
+  }
+  if (!assessorId) {
+    showToast("Please enter Assessor ID (e.g. MKA 9006) before submitting.", true);
+    document.getElementById("assessorId")?.focus();
+    return;
+  }
+  if (!isValidAssessorId(assessorId)) {
+    showToast("Assessor ID must strictly follow 3 letters and 4 numbers (e.g. MKA 9006).", true);
+    document.getElementById("assessorId")?.focus();
+    return;
+  }
+
+  if (!assessmentState.answeredCriteria) assessmentState.answeredCriteria = {};
+  const answeredCount = Object.keys(assessmentState.answeredCriteria).filter(k => assessmentState.answeredCriteria[k]).length;
+  const totalCriteria = 33;
+
+  const countEl = document.getElementById("confirm-criteria-count");
+  if (countEl) countEl.textContent = `${answeredCount} of ${totalCriteria}`;
+
+  const compEl = document.getElementById("confirm-company-val");
+  if (compEl) compEl.textContent = companyName;
+
+  const devEl = document.getElementById("confirm-device-val");
+  if (devEl) devEl.textContent = deviceModel;
+
+  const assessorIdEl = document.getElementById("confirm-assessor-id-val");
+  if (assessorIdEl) assessorIdEl.textContent = assessorId;
+
+  const scoreEl = document.getElementById("confirm-score-val");
+  if (scoreEl) scoreEl.textContent = `${total.toFixed(2)} / ${MAX_TOTAL_SCORE.toFixed(2)} pts`;
+
+  const ratingEl = document.getElementById("confirm-rating-val");
+  if (ratingEl) ratingEl.textContent = `${starsCount} ★ (${ratingLabel})`;
+
+  const modal = document.getElementById("submit-confirm-modal");
+  if (modal) {
+    modal.classList.add("active");
+    modal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeSubmitConfirmModal() {
+  const modal = document.getElementById("submit-confirm-modal");
+  if (modal) {
+    modal.classList.remove("active");
+    modal.setAttribute("aria-hidden", "true");
   }
 }
 
@@ -2174,7 +2516,15 @@ function resetEvaluationForm() {
   if (deviceEl) deviceEl.value = "";
   if (packageEl) packageEl.value = "";
   if (assessorEl) assessorEl.value = "";
-  if (assessorIdEl) assessorIdEl.value = "";
+  if (assessorIdEl) {
+    assessorIdEl.value = "";
+    assessorIdEl.classList.remove("is-valid", "is-invalid");
+    const hint = document.getElementById("assessorId-hint");
+    if (hint) {
+      hint.className = "field-hint";
+      hint.textContent = "Format: 3 letters and 4 numbers (e.g. MKA 9006)";
+    }
+  }
   if (dateEl) dateEl.value = new Date().toISOString().split("T")[0];
 
   assessmentState.selectedItems = {};
@@ -2198,7 +2548,11 @@ function fillDemoData() {
   document.getElementById("deviceModel").value = "VT-900 GPS Telematics Hub";
   document.getElementById("packageName").value = "Commercial Fleet Gold Plus";
   document.getElementById("assessorName").value = "Ir. Khairul Azhar";
-  document.getElementById("assessorId").value = "AS-9920";
+  const demoAssessorIdEl = document.getElementById("assessorId");
+  if (demoAssessorIdEl) {
+    demoAssessorIdEl.value = "MKA 9006";
+    updateAssessorIdValidationUI();
+  }
 
   // Select some realistic high-score options
   const samplePicks = {
@@ -2369,12 +2723,21 @@ function importDraftsFromJson(event) {
 }
 
 // ==========================================================================
-// 6. Real-Time Status Change Notifications Subsystem (Feature 2)
-// Assessor alerts via SSE with Polling Fallback
+// 6. Real-Time Status Change & Remediation Notifications Subsystem
+// Real-time SSE stream with polling fallback & comprehensive notification center
 // ==========================================================================
 let sseConnection = null;
 let notificationPollingTimer = null;
 const SEEN_EVENTS_STORAGE_KEY = "trackscore_seen_status_events";
+const DISMISSED_NOTIFS_STORAGE_KEY = "trackscore_dismissed_notifications";
+
+const notificationsFeedState = {
+  items: [],
+  filter: "all", // "all" | "rejected" | "approved"
+  searchQuery: "",
+  isCollapsed: false,
+  isLoading: false
+};
 
 function getSeenStatusEvents() {
   try {
@@ -2390,10 +2753,61 @@ function markStatusEventSeen(eventId) {
   const seen = getSeenStatusEvents();
   if (!seen.includes(eventId)) {
     seen.push(eventId);
-    if (seen.length > 50) seen.shift();
+    if (seen.length > 80) seen.shift();
     try {
       localStorage.setItem(SEEN_EVENTS_STORAGE_KEY, JSON.stringify(seen));
     } catch (e) {}
+  }
+}
+
+function getDismissedNotificationIds() {
+  try {
+    const raw = localStorage.getItem(DISMISSED_NOTIFS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function dismissSingleNotification(id) {
+  if (!id) return;
+  const dismissed = getDismissedNotificationIds();
+  if (!dismissed.includes(id)) {
+    dismissed.push(id);
+    try {
+      localStorage.setItem(DISMISSED_NOTIFS_STORAGE_KEY, JSON.stringify(dismissed));
+    } catch (e) {}
+  }
+  renderNotificationCardsList();
+  updateNotificationBadges();
+}
+window.dismissSingleNotification = dismissSingleNotification;
+
+function clearAllNotifications() {
+  const allIds = notificationsFeedState.items.map(it => it.evaluationId || it.id).filter(Boolean);
+  try {
+    localStorage.setItem(DISMISSED_NOTIFS_STORAGE_KEY, JSON.stringify(allIds));
+  } catch (e) {}
+  renderNotificationCardsList();
+  updateNotificationBadges();
+  showToast("All notifications marked as read");
+}
+window.clearAllNotifications = clearAllNotifications;
+
+function formatNotificationTime(ts) {
+  if (!ts) return "Recently";
+  try {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return "Recently";
+    return d.toLocaleDateString("en-MY", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  } catch (e) {
+    return "Recently";
   }
 }
 
@@ -2427,30 +2841,26 @@ function showStatusBanner(evt) {
 
   const comp = evt.companyName || "Evaluation";
   const model = evt.deviceModel ? ` (${evt.deviceModel})` : "";
-  const reviewer = evt.reviewedBy ? ` by ${evt.reviewedBy}` : "";
+  const reviewer = evt.reviewedBy ? ` by ${evt.reviewedBy}` : (evt.approvedBy ? ` by ${evt.approvedBy}` : (evt.rejectedBy ? ` by ${evt.rejectedBy}` : ""));
 
   if (isApproved) {
-    textEl.innerHTML = `<strong>Evaluation Approved:</strong> ${escapeHtml(comp)}${escapeHtml(model)} was approved${escapeHtml(reviewer)}. Record is locked from further edits.`;
+    const scoreStr = evt.totalScore !== undefined ? ` [Score: ${Number(evt.totalScore).toFixed(2)}/43.00, ${evt.ratingLabel || 'Grade A'}]` : "";
+    textEl.innerHTML = `<strong>Evaluation Approved:</strong> ${escapeHtml(comp)}${escapeHtml(model)}${scoreStr} was approved${escapeHtml(reviewer)}. Record is locked from further edits.`;
     if (actionBtn) {
       actionBtn.style.display = "inline-flex";
-      actionBtn.textContent = "View Status";
+      actionBtn.textContent = "View Notifications";
       actionBtn.onclick = () => {
-        openLookupModal();
-        const input = document.getElementById("lookup-assessor-input");
-        if (input) {
-          input.value = evt.companyName || "";
-          lookupAssessorSubmissions(evt.companyName);
-        }
+        scrollToNotificationSection();
       };
     }
   } else {
     const reason = evt.rejectionReason ? ` — Reason: "${escapeHtml(evt.rejectionReason)}"` : "";
-    textEl.innerHTML = `<strong>Action Required — Rejected:</strong> ${escapeHtml(comp)}${escapeHtml(model)} was rejected${escapeHtml(reviewer)}${reason}. Click to load and correct.`;
+    textEl.innerHTML = `<strong>Action Required — Remediation:</strong> ${escapeHtml(comp)}${escapeHtml(model)} was rejected${escapeHtml(reviewer)}${reason}. Click to load and correct.`;
     if (actionBtn) {
       actionBtn.style.display = "inline-flex";
       actionBtn.textContent = "Load to Correct";
       actionBtn.onclick = () => {
-        loadEvaluationForCorrection(evt.evaluationId);
+        loadAndScrollEvaluationForCorrection(evt.evaluationId);
         banner.style.display = "none";
       };
     }
@@ -2470,14 +2880,23 @@ function showStatusToast(evt) {
   const toast = document.createElement("div");
   toast.className = `status-toast ${isApproved ? 'toast-approved' : 'toast-rejected'}`;
 
+  let scoreDetailsHtml = "";
+  if (isApproved && evt.totalScore !== undefined) {
+    const stars = evt.starsCount ? "★".repeat(evt.starsCount) : "";
+    scoreDetailsHtml = `<div style="font-size: 11.5px; color: #166534; margin-top: 2px; font-weight: 600;">
+      Score: ${Number(evt.totalScore).toFixed(2)}/43.00 pts • ${escapeHtml(evt.ratingLabel || 'Grade A')} ${stars}
+    </div>`;
+  }
+
   toast.innerHTML = `
     <div style="font-size: 20px;">${isApproved ? '✅' : '❌'}</div>
     <div style="flex: 1; min-width: 0;">
       <div style="font-weight: 700; font-size: 13px; color: #0F172A;">
-        Evaluation ${isApproved ? 'Approved' : 'Rejected'}
+        Evaluation ${isApproved ? 'Approved & Certified' : 'Rejected (Action Required)'}
       </div>
       <div style="font-size: 12px; color: #475569; margin-top: 2px;">
         ${escapeHtml(comp)}${escapeHtml(model)}
+        ${scoreDetailsHtml}
         ${!isApproved && evt.rejectionReason ? `<div style="font-style: italic; color: #991B1B; margin-top: 2px;">"${escapeHtml(evt.rejectionReason)}"</div>` : ''}
       </div>
     </div>
@@ -2488,7 +2907,7 @@ function showStatusToast(evt) {
         </button>
       ` : `
         <button type="button" class="btn btn-secondary btn-sm btn-toast-view" style="font-size: 11.5px; padding: 4px 8px; white-space: nowrap;">
-          View
+          View Feed
         </button>
       `}
       <button type="button" class="btn-toast-close" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #94A3B8;">&times;</button>
@@ -2501,13 +2920,12 @@ function showStatusToast(evt) {
 
   if (!isApproved) {
     toast.querySelector(".btn-toast-correct")?.addEventListener("click", () => {
-      loadEvaluationForCorrection(evt.evaluationId);
+      loadAndScrollEvaluationForCorrection(evt.evaluationId);
       toast.remove();
     });
   } else {
     toast.querySelector(".btn-toast-view")?.addEventListener("click", () => {
-      openLookupModal();
-      lookupAssessorSubmissions(evt.companyName);
+      scrollToNotificationSection();
       toast.remove();
     });
   }
@@ -2525,35 +2943,423 @@ function showStatusToast(evt) {
 }
 
 function handleIncomingStatusEvent(evt) {
-  if (!evt || !evt.id || !evt.status) return;
+  if (!evt || (!evt.id && !evt.evaluationId) || !evt.status) return;
 
+  const eventId = evt.id || `${evt.evaluationId}_${evt.status}_${evt.statusChangedAt || Date.now()}`;
   const seen = getSeenStatusEvents();
-  if (seen.includes(evt.id)) return;
-  markStatusEventSeen(evt.id);
+  if (!seen.includes(eventId)) {
+    markStatusEventSeen(eventId);
+    playNotificationChime();
+    showStatusBanner(evt);
+    showStatusToast(evt);
+  }
 
-  playNotificationChime();
-  showStatusBanner(evt);
-  showStatusToast(evt);
+  // Update in-memory feed items
+  const evalId = evt.evaluationId || evt.id;
+  const existingIdx = notificationsFeedState.items.findIndex(it => (it.evaluationId || it.id) === evalId);
+  if (existingIdx >= 0) {
+    notificationsFeedState.items[existingIdx] = { ...notificationsFeedState.items[existingIdx], ...evt };
+  } else {
+    notificationsFeedState.items.unshift(evt);
+  }
+
+  renderNotificationCardsList();
+  updateNotificationBadges();
 }
 
-async function pollStatusNotifications() {
-  if (document.visibilityState !== "visible") return;
+async function fetchNotificationsFeed() {
+  notificationsFeedState.isLoading = true;
+  const syncEl = document.getElementById("notif-sync-status");
+  if (syncEl) {
+    syncEl.innerHTML = `<span style="font-size: 11px; color: #F58220; font-weight: 600;">Syncing...</span>`;
+  }
+
   try {
     const currentAssessorId = (document.getElementById("assessorId")?.value || "").trim();
+    const currentAssessorName = (document.getElementById("assessorName")?.value || "").trim();
+    const assessorParam = currentAssessorId || currentAssessorName;
+
     let url = `/.netlify/functions/get-notifications`;
-    if (currentAssessorId) {
-      url += `?assessorId=${encodeURIComponent(currentAssessorId)}`;
+    if (assessorParam) {
+      url += `?assessorName=${encodeURIComponent(assessorParam)}`;
     }
 
     const res = await fetch(url, {
       headers: { "x-api-key": getAssessorApiKey() }
     });
-    if (!res.ok) return;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
-    if (json.success && Array.isArray(json.events)) {
-      json.events.forEach(handleIncomingStatusEvent);
+
+    if (json.success) {
+      const liveEvents = Array.isArray(json.recentLiveEvents) ? json.recentLiveEvents : [];
+      const dbNotifs = Array.isArray(json.notifications) ? json.notifications : [];
+
+      // Check if any fresh events came in that need audio chime / toast
+      liveEvents.forEach(evt => {
+        if (evt && evt.id) {
+          const seen = getSeenStatusEvents();
+          if (!seen.includes(evt.id)) {
+            markStatusEventSeen(evt.id);
+            playNotificationChime();
+            showStatusBanner(evt);
+            showStatusToast(evt);
+          }
+        }
+      });
+
+      // Merge items, deduplicating by evaluationId or id
+      const map = new Map();
+      dbNotifs.forEach(n => {
+        const key = n.evaluationId || n.id;
+        if (key) map.set(key, n);
+      });
+      liveEvents.forEach(e => {
+        const key = e.evaluationId || e.id;
+        if (key) {
+          if (map.has(key)) {
+            map.set(key, { ...map.get(key), ...e });
+          } else {
+            map.set(key, e);
+          }
+        }
+      });
+
+      const merged = Array.from(map.values());
+      // Sort newest first
+      merged.sort((a, b) => {
+        const tA = new Date(a.statusChangedAt || a.updatedAt || a.createdAt || 0).getTime();
+        const tB = new Date(b.statusChangedAt || b.updatedAt || b.createdAt || 0).getTime();
+        return tB - tA;
+      });
+
+      notificationsFeedState.items = merged;
+      renderNotificationCardsList();
+      updateNotificationBadges();
     }
-  } catch (e) {}
+  } catch (err) {
+    console.warn("Notifications feed fetch warning:", err);
+  } finally {
+    notificationsFeedState.isLoading = false;
+    if (syncEl) {
+      syncEl.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 6px; height: 6px; background: #10B981; border-radius: 50%; margin-right: 4px;"></span> Live Connected`;
+    }
+  }
+}
+
+function updateNotificationBadges() {
+  const dismissed = getDismissedNotificationIds();
+  const activeItems = notificationsFeedState.items.filter(it => {
+    const id = it.evaluationId || it.id;
+    return id && !dismissed.includes(id);
+  });
+
+  const allCount = activeItems.length;
+  const rejectedCount = activeItems.filter(it => it.status === "rejected").length;
+  const approvedCount = activeItems.filter(it => it.status === "approved").length;
+
+  const countAllEl = document.getElementById("notif-count-all");
+  const countRejEl = document.getElementById("notif-count-rejected");
+  const countAppEl = document.getElementById("notif-count-approved");
+  if (countAllEl) countAllEl.textContent = allCount;
+  if (countRejEl) countRejEl.textContent = rejectedCount;
+  if (countAppEl) countAppEl.textContent = approvedCount;
+
+  // Header quick buttons
+  const headerCountEl = document.getElementById("header-notifications-count");
+  if (headerCountEl) headerCountEl.textContent = allCount;
+
+  const navBadgeEl = document.getElementById("nav-notifications-badge");
+  if (navBadgeEl) {
+    if (rejectedCount > 0) {
+      navBadgeEl.style.display = "inline-flex";
+      navBadgeEl.style.background = "#DC2626";
+      navBadgeEl.textContent = rejectedCount;
+    } else if (allCount > 0) {
+      navBadgeEl.style.display = "inline-flex";
+      navBadgeEl.style.background = "#0284C7";
+      navBadgeEl.textContent = allCount;
+    } else {
+      navBadgeEl.style.display = "none";
+    }
+  }
+
+  const actionPill = document.getElementById("notif-action-pill");
+  const dotEl = document.getElementById("notif-unread-indicator-dot");
+  if (actionPill) {
+    actionPill.style.display = rejectedCount > 0 ? "inline-flex" : "none";
+    actionPill.textContent = `${rejectedCount} Action${rejectedCount > 1 ? 's' : ''} Required`;
+  }
+  if (dotEl) {
+    dotEl.style.display = (rejectedCount > 0 || allCount > 0) ? "block" : "none";
+  }
+}
+
+function renderNotificationCardsList() {
+  const container = document.getElementById("notification-cards-list");
+  if (!container) return;
+
+  const dismissed = getDismissedNotificationIds();
+  const query = (notificationsFeedState.searchQuery || "").trim().toLowerCase();
+  const filter = notificationsFeedState.filter;
+
+  const visibleItems = notificationsFeedState.items.filter(it => {
+    const id = it.evaluationId || it.id;
+    if (id && dismissed.includes(id)) return false;
+
+    if (filter === "rejected" && it.status !== "rejected") return false;
+    if (filter === "approved" && it.status !== "approved") return false;
+
+    if (query) {
+      const comp = String(it.companyName || "").toLowerCase();
+      const model = String(it.deviceModel || "").toLowerCase();
+      const aid = String(it.assessorId || "").toLowerCase();
+      const aname = String(it.assessorName || "").toLowerCase();
+      const reason = String(it.rejectionReason || "").toLowerCase();
+      if (!comp.includes(query) && !model.includes(query) && !aid.includes(query) && !aname.includes(query) && !reason.includes(query)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  if (visibleItems.length === 0) {
+    const isFiltered = filter !== "all" || query.length > 0;
+    container.innerHTML = `
+      <div style="padding: 32px 16px; text-align: center; color: #64748B;">
+        <div style="font-size: 28px; margin-bottom: 8px;">${isFiltered ? '🔍' : '🔔'}</div>
+        <div style="font-weight: 700; font-size: 13.5px; color: #1E293B;">
+          ${isFiltered ? 'No matching review notifications found' : 'All Clear — No Pending Review Notifications'}
+        </div>
+        <div style="font-size: 12.5px; margin-top: 4px; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.5;">
+          ${isFiltered 
+            ? 'Try clearing your search query or switching to another filter tab.'
+            : 'All evaluations are currently reviewed and in sync. When MIROS managers review your submissions, approvals and remediation requests will be delivered here instantly.'}
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  let html = "";
+  visibleItems.forEach(item => {
+    const evalId = item.evaluationId || item.id || "";
+    const isRejected = item.status === "rejected";
+    const comp = item.companyName || "Untitled Company";
+    const model = item.deviceModel || "Unspecified Model";
+    const aid = item.assessorId || "";
+    const timestampStr = formatNotificationTime(item.statusChangedAt || item.rejectedAt || item.approvedAt || item.createdAt);
+    const reviewer = (isRejected ? (item.rejectedBy || item.reviewedBy) : (item.approvedBy || item.reviewedBy)) || "MIROS Manager";
+
+    if (isRejected) {
+      html += `
+        <div class="notification-card-item is-rejected" id="notif-card-${escapeHtml(evalId)}">
+          <div class="notif-card-header">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span class="notif-status-badge badge-rejected">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                Action Required: Remediation
+              </span>
+              <span class="notif-meta-text">
+                Reviewed by <strong>${escapeHtml(reviewer)}</strong> • ${escapeHtml(timestampStr)}
+              </span>
+            </div>
+            <button type="button" class="btn-toast-close" title="Dismiss notification" onclick="dismissSingleNotification('${escapeHtml(evalId)}')" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #94A3B8; padding: 2px 6px;">&times;</button>
+          </div>
+
+          <div class="notif-card-title">
+            ${escapeHtml(comp)} — ${escapeHtml(model)}
+            ${aid ? `<span class="notif-assessor-badge" title="Assessor ID">Assessor: ${escapeHtml(aid)}</span>` : ''}
+          </div>
+
+          <div class="notif-rejection-callout">
+            <strong>Rejection Reason &amp; Remediation Instructions:</strong><br/>
+            "${escapeHtml(item.rejectionReason || "Criteria verification points or evidence requires assessor review and adjustment.")}"
+          </div>
+
+          <div class="notif-card-actions">
+            <div class="notif-actions-left">
+              <button type="button" class="btn btn-primary btn-sm" onclick="loadAndScrollEvaluationForCorrection('${escapeHtml(evalId)}')" style="font-size: 12px; padding: 5px 12px; font-weight: 700;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                Fix &amp; Resubmit Form
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="viewNotificationLookupDetails('${escapeHtml(comp)}')" style="font-size: 12px; padding: 5px 10px;">
+                Review Submission Record
+              </button>
+            </div>
+            <span style="font-size: 11.5px; color: #DC2626; font-weight: 600;">Form unlocked for revision</span>
+          </div>
+        </div>
+      `;
+    } else {
+      const score = typeof item.totalScore === "number" ? item.totalScore.toFixed(2) : (parseFloat(item.totalScore) || 0).toFixed(2);
+      const rating = item.ratingLabel || "Grade A";
+      const stars = item.starsCount ? "★".repeat(item.starsCount) : "";
+
+      html += `
+        <div class="notification-card-item is-approved" id="notif-card-${escapeHtml(evalId)}">
+          <div class="notif-card-header">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span class="notif-status-badge badge-approved">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                Certified: Approved
+              </span>
+              <span class="notif-meta-text">
+                Approved by <strong>${escapeHtml(reviewer)}</strong> • ${escapeHtml(timestampStr)}
+              </span>
+            </div>
+            <button type="button" class="btn-toast-close" title="Dismiss notification" onclick="dismissSingleNotification('${escapeHtml(evalId)}')" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #94A3B8; padding: 2px 6px;">&times;</button>
+          </div>
+
+          <div class="notif-card-title">
+            ${escapeHtml(comp)} — ${escapeHtml(model)}
+            ${aid ? `<span class="notif-assessor-badge" title="Assessor ID">Assessor: ${escapeHtml(aid)}</span>` : ''}
+          </div>
+
+          <div class="notif-approval-callout">
+            <div>
+              <strong>Certified Score:</strong> ${score} / 43.00 pts
+              ${rating ? `• <strong>${escapeHtml(rating)}</strong>` : ''}
+              ${stars ? `<span style="color: #F59E0B; margin-left: 4px;">${stars}</span>` : ''}
+            </div>
+            <span style="font-size: 11.5px; color: #065F46; font-weight: 600;">Official MIROS Certified</span>
+          </div>
+
+          <div class="notif-card-actions">
+            <div class="notif-actions-left">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="exportNotificationRecordPDF('${escapeHtml(evalId)}')" style="font-size: 12px; padding: 5px 10px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                Download Certified PDF
+              </button>
+              <button type="button" class="btn btn-text btn-sm" onclick="dismissSingleNotification('${escapeHtml(evalId)}')" style="font-size: 12px; padding: 5px 8px; color: #64748B;">
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  });
+
+  container.innerHTML = html;
+}
+
+async function loadAndScrollEvaluationForCorrection(recordId) {
+  await loadEvaluationForCorrection(recordId);
+  const metaCard = document.getElementById("card-metadata");
+  if (metaCard) {
+    metaCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+window.loadAndScrollEvaluationForCorrection = loadAndScrollEvaluationForCorrection;
+
+async function exportNotificationRecordPDF(recordId) {
+  try {
+    showToast("Retrieving certified evaluation record...");
+    const res = await fetch(`/.netlify/functions/lookup-evaluation?id=${encodeURIComponent(recordId)}`, {
+      headers: { "x-api-key": getAssessorApiKey() }
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success || !result.data || !result.data[0]) {
+      showToast("Unable to load record for PDF generation", true);
+      return;
+    }
+    // Load into state and display report
+    await loadEvaluationForCorrection(recordId);
+    generatePdfReport();
+  } catch (e) {
+    showToast("PDF generation error: " + e.message, true);
+  }
+}
+window.exportNotificationRecordPDF = exportNotificationRecordPDF;
+
+function viewNotificationLookupDetails(companyName) {
+  openLookupModal();
+  const input = document.getElementById("lookup-assessor-input");
+  if (input) {
+    input.value = companyName || "";
+    lookupAssessorSubmissions(companyName);
+  }
+}
+window.viewNotificationLookupDetails = viewNotificationLookupDetails;
+
+function scrollToNotificationSection() {
+  const section = document.getElementById("notification-section");
+  const body = document.getElementById("notification-section-body");
+  const collapseLabel = document.getElementById("notif-collapse-label");
+  const collapseIcon = document.getElementById("notif-collapse-icon");
+
+  if (section) {
+    if (body && body.classList.contains("collapsed")) {
+      body.classList.remove("collapsed");
+      if (collapseLabel) collapseLabel.textContent = "Collapse";
+      if (collapseIcon) collapseIcon.style.transform = "rotate(0deg)";
+      notificationsFeedState.isCollapsed = false;
+    }
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    section.classList.add("highlight-flash");
+    setTimeout(() => {
+      section.classList.remove("highlight-flash");
+    }, 1800);
+  }
+}
+window.scrollToNotificationSection = scrollToNotificationSection;
+
+function toggleNotificationSectionCollapse() {
+  const body = document.getElementById("notification-section-body");
+  const collapseLabel = document.getElementById("notif-collapse-label");
+  const collapseIcon = document.getElementById("notif-collapse-icon");
+  const btn = document.getElementById("btn-toggle-notif-collapse");
+
+  if (!body) return;
+  const isCollapsed = body.classList.toggle("collapsed");
+  notificationsFeedState.isCollapsed = isCollapsed;
+
+  if (btn) btn.setAttribute("aria-expanded", String(!isCollapsed));
+  if (collapseLabel) collapseLabel.textContent = isCollapsed ? "Expand" : "Collapse";
+  if (collapseIcon) collapseIcon.style.transform = isCollapsed ? "rotate(180deg)" : "rotate(0deg)";
+}
+
+function setNotificationFilter(filter) {
+  notificationsFeedState.filter = filter;
+  document.querySelectorAll(".notif-filter-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-filter") === filter);
+  });
+  renderNotificationCardsList();
+}
+
+function initNotificationSection() {
+  // Navigation & title quick jump buttons
+  document.getElementById("btn-toggle-notification-section")?.addEventListener("click", scrollToNotificationSection);
+  document.getElementById("btn-nav-notifications")?.addEventListener("click", scrollToNotificationSection);
+
+  // Filter tabs
+  document.getElementById("notif-filter-all")?.addEventListener("click", () => setNotificationFilter("all"));
+  document.getElementById("notif-filter-rejected")?.addEventListener("click", () => setNotificationFilter("rejected"));
+  document.getElementById("notif-filter-approved")?.addEventListener("click", () => setNotificationFilter("approved"));
+
+  // Refresh feed button
+  document.getElementById("btn-refresh-notifications")?.addEventListener("click", () => {
+    fetchNotificationsFeed();
+    showToast("Notifications feed updated");
+  });
+
+  // Collapse / Expand toggle
+  document.getElementById("btn-toggle-notif-collapse")?.addEventListener("click", toggleNotificationSectionCollapse);
+
+  // Search input
+  const searchInput = document.getElementById("notif-search-input");
+  if (searchInput) {
+    searchInput.addEventListener("input", (e) => {
+      notificationsFeedState.searchQuery = e.target.value;
+      renderNotificationCardsList();
+    });
+  }
+
+  // Clear all button
+  document.getElementById("btn-clear-all-notifs")?.addEventListener("click", clearAllNotifications);
+
+  // Initial fetch
+  fetchNotificationsFeed();
 }
 
 function initAssessorStatusListener() {
@@ -2564,9 +3370,9 @@ function initAssessorStatusListener() {
 
   if (typeof EventSource !== "undefined") {
     try {
-      const currentAssessorId = (document.getElementById("assessorId")?.value || "").trim();
+      const currentAssessorName = (document.getElementById("assessorName")?.value || "").trim();
       let sseUrl = `/.netlify/functions/status-stream`;
-      if (currentAssessorId) sseUrl += `?assessorId=${encodeURIComponent(currentAssessorId)}`;
+      if (currentAssessorName) sseUrl += `?assessorName=${encodeURIComponent(currentAssessorName)}`;
 
       sseConnection = new EventSource(sseUrl);
 
@@ -2583,23 +3389,23 @@ function initAssessorStatusListener() {
 
       sseConnection.onerror = () => {
         if (!notificationPollingTimer) {
-          notificationPollingTimer = setInterval(pollStatusNotifications, 25000);
+          notificationPollingTimer = setInterval(fetchNotificationsFeed, 20000);
         }
       };
     } catch (e) {
       if (!notificationPollingTimer) {
-        notificationPollingTimer = setInterval(pollStatusNotifications, 25000);
+        notificationPollingTimer = setInterval(fetchNotificationsFeed, 20000);
       }
     }
   } else {
-    notificationPollingTimer = setInterval(pollStatusNotifications, 25000);
+    notificationPollingTimer = setInterval(fetchNotificationsFeed, 20000);
   }
 
-  setTimeout(pollStatusNotifications, 1500);
+  setTimeout(fetchNotificationsFeed, 1200);
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
-      pollStatusNotifications();
+      fetchNotificationsFeed();
     }
   });
 }
@@ -2627,6 +3433,26 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
+    // Assessor ID auto-formatting and real-time validation handler
+    const assessorIdEl = document.getElementById("assessorId");
+    if (assessorIdEl) {
+      assessorIdEl.addEventListener("input", (e) => {
+        const formatted = sanitizeAndFormatAssessorId(e.target.value);
+        if (formatted !== e.target.value) {
+          e.target.value = formatted;
+        }
+        updateAssessorIdValidationUI();
+        captureMetadata();
+      });
+      assessorIdEl.addEventListener("blur", () => {
+        const formatted = sanitizeAndFormatAssessorId(assessorIdEl.value).trim();
+        assessorIdEl.value = formatted;
+        updateAssessorIdValidationUI();
+        captureMetadata();
+      });
+      updateAssessorIdValidationUI();
+    }
+
     // Check for existing draft in localStorage on page load
     checkExistingDraft();
 
@@ -2635,8 +3461,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Attach button handlers
     document.getElementById("btn-save-draft")?.addEventListener("click", () => saveDraftToStorage(true, false));
+    document.getElementById("btn-save-draft-top")?.addEventListener("click", () => saveDraftToStorage(true, false));
     document.getElementById("btn-save-as-new-modal")?.addEventListener("click", saveDraftAsNew);
     document.getElementById("btn-my-drafts")?.addEventListener("click", () => openDraftsModal());
+    document.getElementById("btn-my-drafts-top")?.addEventListener("click", () => openDraftsModal());
     document.getElementById("link-view-all-drafts")?.addEventListener("click", () => openDraftsModal());
     document.getElementById("btn-start-new-eval")?.addEventListener("click", startNewEvaluation);
     document.getElementById("btn-modal-new-eval")?.addEventListener("click", startNewEvaluation);
@@ -2645,7 +3473,13 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btn-dismiss-rubric-warning")?.addEventListener("click", hideRubricWarning);
     document.getElementById("btn-lookup-rejections")?.addEventListener("click", openLookupModal);
     document.getElementById("btn-pdf-report")?.addEventListener("click", generatePdfReport);
-    document.getElementById("btn-save-evaluation")?.addEventListener("click", saveEvaluationToDatabase);
+    document.getElementById("btn-save-evaluation")?.addEventListener("click", openSubmitConfirmModal);
+    document.getElementById("btn-close-submit-confirm")?.addEventListener("click", closeSubmitConfirmModal);
+    document.getElementById("btn-cancel-submit-confirm")?.addEventListener("click", closeSubmitConfirmModal);
+    document.getElementById("btn-execute-submit")?.addEventListener("click", () => {
+      closeSubmitConfirmModal();
+      saveEvaluationToDatabase();
+    });
     document.getElementById("btn-reset-form")?.addEventListener("click", resetEvaluationForm);
     document.getElementById("btn-demo-data")?.addEventListener("click", fillDemoData);
 
@@ -2708,8 +3542,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     document.getElementById("input-import-drafts")?.addEventListener("change", importDraftsFromJson);
 
-    // Feature 2: Initialize real-time status change notification listener
+    // Feature 2: Initialize real-time status change notification listener & notification feed section
     initAssessorStatusListener();
+    initNotificationSection();
 
     // Feature 3: Initialize section progress UI
     updateSectionProgressUI();
@@ -2742,12 +3577,22 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
+    const submitConfirmModal = document.getElementById("submit-confirm-modal");
+    if (submitConfirmModal) {
+      submitConfirmModal.addEventListener("click", (e) => {
+        if (e.target === submitConfirmModal) {
+          closeSubmitConfirmModal();
+        }
+      });
+    }
+
     // Close on Escape key press
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         closeDraftsModal();
         closeReportModal();
         closeLookupModal();
+        closeSubmitConfirmModal();
       }
     });
   }

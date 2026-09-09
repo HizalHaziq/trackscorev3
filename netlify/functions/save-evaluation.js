@@ -56,15 +56,15 @@ export const handler = async (event, context) => {
       };
     }
 
-    // 2. Validate mandatory metadata fields (Added Assessor ID)
+    // 2. Validate mandatory metadata fields
     const { companyName, deviceModel, assessorName, assessorId, assessmentDate, packageName, breakdown, resubmitRecordId } = payload;
     
-    if (!companyName || !deviceModel || !assessorName || !assessorId) {
+    if (!companyName || !deviceModel || !assessorName) {
       return {
         statusCode: 400,
         headers,
         body: JSON.stringify({
-          error: 'Missing required fields: Company Name, Device Model, Assessor Name, and Assessor ID are mandatory.'
+          error: 'Missing required fields: Company Name, Device Model, and Assessor Name are mandatory.'
         })
       };
     }
@@ -72,8 +72,19 @@ export const handler = async (event, context) => {
     const cleanCompany = String(companyName).trim();
     const cleanModel = String(deviceModel).trim();
     const cleanAssessorName = String(assessorName).trim();
-    const cleanAssessorId = String(assessorId).trim();
+    const cleanAssessorId = assessorId ? String(assessorId).trim().toUpperCase() : '';
     const cleanDate = assessmentDate ? String(assessmentDate).trim().substring(0, 10) : new Date().toISOString().substring(0, 10);
+
+    // Validate Assessor ID format if provided: strictly 3 letters, space, 4 numbers (e.g. MKA 9006)
+    if (cleanAssessorId && !/^[A-Z]{3} \d{4}$/.test(cleanAssessorId)) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: 'Invalid Assessor ID format. Must strictly follow 3 letters and 4 numbers (e.g. MKA 9006).'
+        })
+      };
+    }
 
     // 3. Server-side score recomputation & integrity check
     if (!Array.isArray(breakdown) || breakdown.length === 0) {
@@ -183,7 +194,7 @@ export const handler = async (event, context) => {
         const historyEntry = {
           action: 'resubmitted_by_assessor',
           timestamp: new Date().toISOString(),
-          changedBy: `${cleanAssessorName} (${cleanAssessorId})`,
+          changedBy: cleanAssessorId ? `${cleanAssessorName} (${cleanAssessorId})` : cleanAssessorName,
           note: `Assessor remediated criteria and resubmitted for manager review. (Previous score: ${(existingToResubmit.totalScore || 0).toFixed(2)}, New score: ${recomputed.totalScore.toFixed(2)})`,
           previousScores: {
             sectionAScore: existingToResubmit.sectionAScore,
@@ -231,23 +242,27 @@ export const handler = async (event, context) => {
     if (connection.isMongoAtlas) {
       const collection = connection.db.collection(COLLECTION_NAME);
       const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const existing = await collection.findOne({
+      const duplicateFilter = {
         companyName: { $regex: new RegExp(`^${escapeRegex(cleanCompany)}$`, 'i') },
         deviceModel: { $regex: new RegExp(`^${escapeRegex(cleanModel)}$`, 'i') },
-        assessorId: cleanAssessorId, // Guard strictly by ID to prevent name collisions
+        assessorName: { $regex: new RegExp(`^${escapeRegex(cleanAssessorName)}$`, 'i') },
         deletedAt: null,
         $or: [
           { assessmentDate: cleanDate },
           { createdAt: { $regex: new RegExp(`^${cleanDate}`) } }
         ]
-      });
+      };
+      if (cleanAssessorId) {
+        duplicateFilter.assessorId = cleanAssessorId;
+      }
+      const existing = await collection.findOne(duplicateFilter);
 
       if (existing) {
         return {
           statusCode: 409,
           headers,
           body: JSON.stringify({
-            error: `Conflict: An evaluation record for Company "${cleanCompany}", Device "${cleanModel}", Assessor "${cleanAssessorName}" (${cleanAssessorId}) on date ${cleanDate} already exists (ID: ${existing._id}). Please edit the existing record or update the assessment date/model.`,
+            error: `Conflict: An evaluation record for Company "${cleanCompany}", Device "${cleanModel}", Assessor "${cleanAssessorName}" on date ${cleanDate} already exists (ID: ${existing._id}). Please edit the existing record or update the assessment date/model.`,
             existingId: existing._id
           })
         };

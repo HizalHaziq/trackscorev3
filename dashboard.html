@@ -7,6 +7,9 @@
     <meta name="description" content="TrackScore Managerial Review Dashboard for telematics hardware and software evaluation records." />
     <link rel="icon" type="image/svg+xml" href="/TrackScore_TS_Icon.svg" />
     <link rel="apple-touch-icon" href="/TrackScore_TS_Icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/style.css" />
     <script src="/api/config.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -390,10 +393,14 @@
                 <input type="text" id="edit-packageName" class="form-control" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 14px;" />
               </div>
 
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                 <div>
                   <label for="edit-assessorName" style="display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase;">Assessor Name</label>
                   <input type="text" id="edit-assessorName" class="form-control" required style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 14px;" />
+                </div>
+                <div>
+                  <label for="edit-assessorId" style="display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase;">Assessor ID</label>
+                  <input type="text" id="edit-assessorId" class="form-control" placeholder="MKA 9006" pattern="^[A-Za-z]{3}\s[0-9]{4}$" maxlength="8" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 14px; text-transform: uppercase;" />
                 </div>
                 <div>
                   <label for="edit-assessmentDate" style="display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase;">Assessment Date</label>
@@ -811,6 +818,7 @@
             (r.companyName || "").toLowerCase().includes(searchTerm) ||
             (r.deviceModel || "").toLowerCase().includes(searchTerm) ||
             (r.assessorName || "").toLowerCase().includes(searchTerm) ||
+            (r.assessorId || "").toLowerCase().includes(searchTerm) ||
             (r.packageName || "").toLowerCase().includes(searchTerm);
 
           const matchesRating =
@@ -961,6 +969,7 @@
         document.getElementById("edit-deviceModel").value = record.deviceModel || "";
         document.getElementById("edit-packageName").value = record.packageName || "";
         document.getElementById("edit-assessorName").value = record.assessorName || "";
+        document.getElementById("edit-assessorId").value = record.assessorId || "";
         document.getElementById("edit-assessmentDate").value = record.assessmentDate || (record.createdAt ? record.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]);
 
         document.getElementById("edit-modal").classList.add("active");
@@ -979,11 +988,23 @@
 
         if (alertBox) alertBox.style.display = "none";
 
+        const rawAssessorId = (document.getElementById("edit-assessorId").value || "").trim().toUpperCase();
+        if (rawAssessorId && !/^[A-Z]{3} \d{4}$/.test(rawAssessorId)) {
+          if (alertBox && alertMsg) {
+            alertMsg.textContent = "Assessor ID must strictly follow 3 letters and 4 numbers (e.g. MKA 9006).";
+            alertBox.style.display = "flex";
+          } else {
+            showToast("Assessor ID must strictly follow 3 letters and 4 numbers (e.g. MKA 9006).", true);
+          }
+          return;
+        }
+
         const updateData = {
           companyName: document.getElementById("edit-companyName").value.trim(),
           deviceModel: document.getElementById("edit-deviceModel").value.trim(),
           packageName: document.getElementById("edit-packageName").value.trim(),
           assessorName: document.getElementById("edit-assessorName").value.trim(),
+          assessorId: rawAssessorId,
           assessmentDate: document.getElementById("edit-assessmentDate").value
         };
 
@@ -1247,8 +1268,8 @@
                 <div style="color: #1A1A1A;">${escapeHtml(record.packageName || "Standard")}</div>
               </div>
               <div>
-                <span style="font-weight: 700; color: #64748B; font-size: 11px; text-transform: uppercase;">Assessor ID / Name:</span>
-                <div style="color: #1A1A1A; font-weight: 600;">${escapeHtml(record.assessorName)}</div>
+                <span style="font-weight: 700; color: #64748B; font-size: 11px; text-transform: uppercase;">Assessor:</span>
+                <div style="color: #1A1A1A; font-weight: 600;">${escapeHtml(record.assessorName)}${record.assessorId ? ` <span style="color: #0284C7; font-family: monospace;">[${escapeHtml(record.assessorId)}]</span>` : ''}</div>
               </div>
               <div>
                 <span style="font-weight: 700; color: #64748B; font-size: 11px; text-transform: uppercase;">Assessment Date:</span>
@@ -1632,19 +1653,26 @@
       function exportCombinedPdf() {
         const searchTerm = (document.getElementById("table-search")?.value || "").toLowerCase().trim();
         const ratingFilter = document.getElementById("rating-filter")?.value || "all";
+        const statusFilter = (document.getElementById("status-filter")?.value || "all").toLowerCase().trim();
 
         const recordsToExport = evaluationsList.filter(r => {
           const matchesSearch =
             (r.companyName || "").toLowerCase().includes(searchTerm) ||
             (r.deviceModel || "").toLowerCase().includes(searchTerm) ||
             (r.assessorName || "").toLowerCase().includes(searchTerm) ||
+            (r.assessorId || "").toLowerCase().includes(searchTerm) ||
             (r.packageName || "").toLowerCase().includes(searchTerm);
 
           const matchesRating =
             ratingFilter === "all" ||
             String(r.starsCount) === ratingFilter;
 
-          return matchesSearch && matchesRating;
+          const recStatus = (r.status || "pending_review").toLowerCase();
+          const matchesStatus =
+            statusFilter === "all" ||
+            recStatus === statusFilter;
+
+          return matchesSearch && matchesRating && matchesStatus;
         });
 
         if (recordsToExport.length === 0) {
@@ -1669,48 +1697,48 @@
           const statusColor = recStatus === 'APPROVED' ? '#059669' : (recStatus === 'REJECTED' ? '#DC2626' : '#D97706');
 
           return `
-            <tr style="background: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'}; font-size: 8.5px; page-break-inside: avoid; break-inside: avoid;">
-              <td style="padding: 4px 5px; border-bottom: 1px solid #E2E8F0; text-align: center; color: #64748B;">${idx + 1}</td>
-              <td style="padding: 4px 5px; border-bottom: 1px solid #E2E8F0; font-weight: 700;">${escapeHtml(rec.companyName)}</td>
-              <td style="padding: 4px 5px; border-bottom: 1px solid #E2E8F0;">${escapeHtml(rec.deviceModel)}</td>
-              <td style="padding: 4px 5px; border-bottom: 1px solid #E2E8F0; color: #64748B;">${escapeHtml(rec.packageName || 'Standard')}</td>
-              <td style="padding: 4px 5px; border-bottom: 1px solid #E2E8F0; text-align: center; font-weight: 700; color: ${statusColor};">${recStatus}</td>
-              <td style="padding: 4px 5px; border-bottom: 1px solid #E2E8F0; text-align: center;">${(rec.sectionAScore || 0).toFixed(2)}</td>
-              <td style="padding: 4px 5px; border-bottom: 1px solid #E2E8F0; text-align: center;">${(rec.sectionBScore || 0).toFixed(2)}</td>
-              <td style="padding: 4px 5px; border-bottom: 1px solid #E2E8F0; text-align: center; font-weight: 800; color: #C2410C;">${(rec.totalScore || 0).toFixed(2)}</td>
-              <td style="padding: 4px 5px; border-bottom: 1px solid #E2E8F0; text-align: center; color: #B45309; font-weight: 700;">${starsStr}</td>
-              <td style="padding: 4px 5px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #64748B;">${dateFormatted}</td>
+            <tr style="background: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'}; font-size: 9.5px; page-break-inside: avoid; break-inside: avoid;">
+              <td style="padding: 6px 6px; border-bottom: 1px solid #E2E8F0; text-align: center; color: #64748B;">${idx + 1}</td>
+              <td style="padding: 6px 6px; border-bottom: 1px solid #E2E8F0; font-weight: 700; color: #111827;">${escapeHtml(rec.companyName)}</td>
+              <td style="padding: 6px 6px; border-bottom: 1px solid #E2E8F0; color: #334155;">${escapeHtml(rec.deviceModel)}</td>
+              <td style="padding: 6px 6px; border-bottom: 1px solid #E2E8F0; color: #64748B;">${escapeHtml(rec.packageName || 'Standard')}</td>
+              <td style="padding: 6px 6px; border-bottom: 1px solid #E2E8F0; text-align: center; font-weight: 700; color: ${statusColor};">${recStatus}</td>
+              <td style="padding: 6px 6px; border-bottom: 1px solid #E2E8F0; text-align: center; font-variant-numeric: tabular-nums;">${(rec.sectionAScore || 0).toFixed(2)}</td>
+              <td style="padding: 6px 6px; border-bottom: 1px solid #E2E8F0; text-align: center; font-variant-numeric: tabular-nums;">${(rec.sectionBScore || 0).toFixed(2)}</td>
+              <td style="padding: 6px 6px; border-bottom: 1px solid #E2E8F0; text-align: center; font-weight: 800; color: #F58220; font-variant-numeric: tabular-nums;">${(rec.totalScore || 0).toFixed(2)}</td>
+              <td style="padding: 6px 6px; border-bottom: 1px solid #E2E8F0; text-align: center; color: #B45309; font-weight: 700;">${starsStr}</td>
+              <td style="padding: 6px 6px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #64748B;">${dateFormatted}</td>
             </tr>
           `;
         }).join("");
 
         const template = `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1E293B; padding: 14px 18px; width: 100%; box-sizing: border-box;">
-            <div style="background: #1A1A1A; border-bottom: 3px solid #F58220; padding: 12px 16px; color: #FFFFFF; border-radius: 4px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1E293B; padding: 20px 24px; width: 100%; box-sizing: border-box; background: #FFFFFF;">
+            <div style="background: #171717; border-bottom: 3px solid #F58220; padding: 14px 18px; color: #FFFFFF; border-radius: 4px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
               <div>
-                <div style="font-size: 8px; text-transform: uppercase; letter-spacing: 1.5px; color: #F58220; font-weight: 800;">MALAYSIAN INSTITUTE OF ROAD SAFETY RESEARCH (MIROS)</div>
-                <h2 style="margin: 2px 0 0 0; font-size: 16px; font-weight: 800; color: #FFFFFF;">COMBINED TELEMATICS EVALUATION REGISTRY</h2>
-                <div style="font-size: 9px; color: #CBD5E1; margin-top: 2px;">Managerial Review Audit &bull; TrackScore Verification Standard</div>
+                <div style="font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; color: #F58220; font-weight: 800;">MALAYSIAN INSTITUTE OF ROAD SAFETY RESEARCH (MIROS)</div>
+                <h2 style="margin: 2px 0 0 0; font-size: 17px; font-weight: 800; color: #FFFFFF;">COMBINED TELEMATICS EVALUATION REGISTRY</h2>
+                <div style="font-size: 10px; color: #CBD5E1; margin-top: 2px;">Managerial Review Audit &bull; TrackScore Verification Standard</div>
               </div>
-              <div style="text-align: right; font-size: 9px; color: #CBD5E1;">
-                <div>Export Date: ${todayStr}</div>
-                <div style="font-weight: 700; color: #F58220; margin-top: 2px;">Total Records: ${recordsToExport.length}</div>
+              <div style="text-align: right; font-size: 10px; color: #CBD5E1;">
+                <div>Export Date: <strong>${todayStr}</strong></div>
+                <div style="font-weight: 700; color: #F58220; margin-top: 2px; font-size: 11px;">Total Records: ${recordsToExport.length}</div>
               </div>
             </div>
 
             <table style="width: 100%; border-collapse: collapse; border: 1px solid #CBD5E1; margin-bottom: 14px;">
               <thead>
-                <tr style="background: #1A1A1A; color: #FFFFFF; font-size: 8px; text-transform: uppercase;">
-                  <th style="padding: 5px 5px; text-align: center; width: 3%;">#</th>
-                  <th style="padding: 5px 5px; text-align: left; width: 20%;">Company</th>
-                  <th style="padding: 5px 5px; text-align: left; width: 18%;">Device Model</th>
-                  <th style="padding: 5px 5px; text-align: left; width: 12%;">Package</th>
-                  <th style="padding: 5px 5px; text-align: center; width: 12%;">Status</th>
-                  <th style="padding: 5px 5px; text-align: center; width: 7%;">Sec A</th>
-                  <th style="padding: 5px 5px; text-align: center; width: 7%;">Sec B</th>
-                  <th style="padding: 5px 5px; text-align: center; width: 7%; color: #F58220;">Total</th>
-                  <th style="padding: 5px 5px; text-align: center; width: 14%;">Rating</th>
-                  <th style="padding: 5px 5px; text-align: right; width: 8%;">Date</th>
+                <tr style="background: #171717; color: #FFFFFF; font-size: 9px; text-transform: uppercase;">
+                  <th style="padding: 7px 6px; text-align: center; width: 3%;">#</th>
+                  <th style="padding: 7px 6px; text-align: left; width: 21%;">Company</th>
+                  <th style="padding: 7px 6px; text-align: left; width: 18%;">Device Model</th>
+                  <th style="padding: 7px 6px; text-align: left; width: 12%;">Package</th>
+                  <th style="padding: 7px 6px; text-align: center; width: 11%;">Status</th>
+                  <th style="padding: 7px 6px; text-align: center; width: 7%;">Sec A</th>
+                  <th style="padding: 7px 6px; text-align: center; width: 7%;">Sec B</th>
+                  <th style="padding: 7px 6px; text-align: center; width: 7%; color: #F58220;">Total</th>
+                  <th style="padding: 7px 6px; text-align: center; width: 14%;">Rating</th>
+                  <th style="padding: 7px 6px; text-align: right; width: 10%;">Date</th>
                 </tr>
               </thead>
               <tbody>
@@ -1718,53 +1746,73 @@
               </tbody>
             </table>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #E2E8F0; padding-top: 8px; font-size: 8px; color: #64748B;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #E2E8F0; padding-top: 8px; font-size: 9px; color: #64748B;">
               <div>TrackScore Digital Assessor Evaluation System &bull; Official MIROS Telematics Standardization</div>
-              <div>Authorized Managerial Export</div>
+              <div>Authorized Managerial Export &bull; ${recordsToExport.length} Records Verified</div>
             </div>
           </div>
         `;
 
-        // 1. Create temporary hidden container to ensure full scrollHeight calculations
-        const tempContainer = document.createElement('div');
-        tempContainer.innerHTML = template;
-        tempContainer.style.position = 'absolute';
-        tempContainer.style.top = '0';
-        tempContainer.style.left = '-9999px';
-        document.body.appendChild(tempContainer);
+        // Cache template and filename for modal viewer and PDF export
+        currentReportHtml = template;
+        currentReportFilename = `TrackScore_Combined_Report_${new Date().toISOString().split('T')[0]}.pdf`;
 
-        const opt = {
-          margin: [0.5, 0.5, 0.5, 0.5],
-          filename: `TrackScore_Combined_Report_${new Date().toISOString().split('T')[0]}.pdf`,
-          image: { type: "jpeg", quality: 0.98 },
-          html2canvas: { 
-            scale: 2, 
-            useCORS: true, 
-            logging: false,
-            scrollY: 0,
-            windowHeight: tempContainer.scrollHeight
-          },
-          jsPDF: { unit: "in", format: "a4", orientation: "landscape" },
-          pagebreak: { mode: ['css', 'legacy'] }
-        };
+        // 1. RENDER AND SHOW REPORT DIRECTLY ON THE PAGE IN THE REPORT VIEWER MODAL
+        const reportWrapper = document.getElementById("report-document-wrapper");
+        const reportModal = document.getElementById("report-modal");
+        const reportModalTitle = document.getElementById("report-modal-title");
+        const reportStatusBadge = document.getElementById("report-status-badge");
+        const reportModalMeta = document.getElementById("report-modal-meta");
+        const reportApprovalEl = document.getElementById("report-modal-approval-actions");
+        const btnViewDetails = document.getElementById("btn-report-view-details");
 
-        window.html2pdf().from(tempContainer).set(opt).save().then(() => {
-          document.body.removeChild(tempContainer); // cleanup
-          if (combinedPdfBtn) {
-            combinedPdfBtn.disabled = false;
-            combinedPdfBtn.innerHTML = `
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-              </svg>
-              Combined PDF
-            `;
+        if (reportWrapper && reportModal) {
+          reportWrapper.style.maxWidth = "960px";
+          reportWrapper.innerHTML = template;
+
+          if (reportModalTitle) {
+            reportModalTitle.textContent = `Combined Telematics Evaluation Registry (${recordsToExport.length} Records)`;
           }
-        }).catch(() => {
-          document.body.removeChild(tempContainer); // cleanup on error
-        });
+          if (reportStatusBadge) {
+            reportStatusBadge.textContent = `Consolidated Registry Displayed on Page • ${recordsToExport.length} Evaluations`;
+          }
+          if (reportModalMeta) {
+            reportModalMeta.textContent = `Official MIROS Combined Telematics Registry Export • Filtered Audit Roll-up`;
+          }
+          if (reportApprovalEl) {
+            reportApprovalEl.innerHTML = ``;
+          }
+          if (btnViewDetails) {
+            btnViewDetails.style.display = "none";
+          }
+
+          // Close details modal if open, and show report modal
+          closeModal();
+          reportModal.classList.add("active");
+          reportModal.setAttribute("aria-hidden", "false");
+
+          const modalBody = document.getElementById("report-modal-body");
+          if (modalBody) modalBody.scrollTop = 0;
+
+          showToast("Combined Registry Report is now displayed on the page!");
+        }
+
+        // Reset button state
+        if (combinedPdfBtn) {
+          combinedPdfBtn.disabled = false;
+          combinedPdfBtn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            Combined PDF
+          `;
+        }
+
+        // Also initiate automatic PDF file download
+        downloadReportPdf(false);
       }
 
       function closeModal() {
@@ -1890,14 +1938,14 @@
                 <tr>
                   <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #64748B; text-transform: uppercase;">Device Model:</td>
                   <td style="padding: 2.5px 5px; font-size: 10.5px; font-weight: 700; color: #0F172A;">${escapeHtml(deviceModel)}</td>
-                  <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #64748B; text-transform: uppercase;">Assessor ID/Name:</td>
+                  <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #64748B; text-transform: uppercase;">Assessor Name:</td>
                   <td style="padding: 2.5px 5px; font-size: 10.5px; font-weight: 700; color: #0F172A;">${escapeHtml(assessorName)}</td>
                 </tr>
                 <tr>
                   <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #64748B; text-transform: uppercase;">Package:</td>
                   <td style="padding: 2.5px 5px; font-size: 10.5px; font-weight: 700; color: #0F172A;">${escapeHtml(packageName)}</td>
-                  <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #64748B; text-transform: uppercase;">Rubric Version:</td>
-                  <td style="padding: 2.5px 5px; font-size: 10.5px; font-weight: 700; color: #0F172A;">v${escapeHtml(record.rubricVersion || '1.0')} (33 Criteria / 43 Pts)</td>
+                  <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #64748B; text-transform: uppercase;">Assessor ID:</td>
+                  <td style="padding: 2.5px 5px; font-size: 10.5px; font-weight: 700; color: #0284C7; font-family: monospace;">${escapeHtml(record.assessorId || "N/A")}</td>
                 </tr>
               </table>
             </div>
@@ -2016,7 +2064,13 @@
         const reportStatusBadge = document.getElementById("report-status-badge");
 
         if (reportWrapper && reportModal) {
+          reportWrapper.style.maxWidth = "840px";
           reportWrapper.innerHTML = rawHtmlTemplate;
+
+          const btnViewDetails = document.getElementById("btn-report-view-details");
+          if (btnViewDetails) {
+            btnViewDetails.style.display = "inline-flex";
+          }
 
           if (reportModalTitle) {
             reportModalTitle.textContent = `Generated Assessment Report: ${companyName} (${deviceModel})`;
@@ -2082,9 +2136,10 @@
         if (statusBadge) statusBadge.textContent = "Compiling 1-page PDF document...";
 
         const element = document.getElementById('report-document-wrapper');
+        const isLandscape = (currentReportFilename || "").toLowerCase().includes("combined");
 
         const opt = {
-          margin: [0.5, 0.5, 0.5, 0.5],
+          margin: isLandscape ? [0.4, 0.4, 0.4, 0.4] : [0.5, 0.5, 0.5, 0.5],
           filename: currentReportFilename || "TrackScore_Evaluation_Report.pdf",
           image: { type: "jpeg", quality: 0.98 },
           html2canvas: { 
@@ -2094,7 +2149,7 @@
             scrollY: 0,
             windowHeight: element ? element.scrollHeight : undefined
           },
-          jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+          jsPDF: { unit: "in", format: "a4", orientation: isLandscape ? "landscape" : "portrait" },
           pagebreak: { mode: ['css', 'legacy'] }
         };
 
@@ -2106,7 +2161,7 @@
             .then(() => {
               if (downloadText) downloadText.textContent = "Download PDF File";
               if (downloadBtn) downloadBtn.disabled = false;
-              if (statusBadge) statusBadge.textContent = "Report displayed • 1-page PDF file downloaded successfully";
+              if (statusBadge) statusBadge.textContent = isLandscape ? "Report displayed • Combined registry PDF file downloaded successfully" : "Report displayed • 1-page PDF file downloaded successfully";
               if (showMessage) {
                 showToast("PDF report successfully downloaded!");
               }

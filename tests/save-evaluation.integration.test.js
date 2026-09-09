@@ -34,7 +34,7 @@ describe('save-evaluation.js Integration Suite', () => {
       deviceModel: `TG-800-${timestamp}`,
       packageName: 'Premium Enterprise',
       assessorName: `Assessor-${timestamp}`,
-      assessorId: `ASR-${timestamp}`,
+      assessorId: 'MKA 9006',
       assessmentDate: '2026-03-15',
       breakdown,
       sectionAScore: 3.0,
@@ -124,7 +124,7 @@ describe('save-evaluation.js Integration Suite', () => {
     const uniqueCompany = `DuplicateCorp-${Date.now()}`;
     const uniqueModel = `Tracker-X-${Date.now()}`;
     const uniqueAssessor = 'Lead Assessor Rizal';
-    const uniqueAssessorId = `ASR-${Date.now()}`;
+    const uniqueAssessorId = 'MKA 9006';
     const specificDate = '2026-03-20';
 
     const payload = createValidPayload({
@@ -153,5 +153,28 @@ describe('save-evaluation.js Integration Suite', () => {
     assert.equal(secondRes.statusCode, 409, 'Duplicate submission should be rejected with 409 Conflict');
     const body = JSON.parse(secondRes.body);
     assert.match(body.error, /duplicate|already exists/i);
+  });
+
+  // 5. Strict Assessor ID Format Validation (400)
+  it('should return 400 when assessorId does not follow 3 letters and 4 numbers format', async () => {
+    const invalidIds = ['MKA9006', 'MK 9006', 'MKAA 9006', 'MKA 900', 'MKA 90006', '123 9006', 'MKA ABCD'];
+    for (const invalidId of invalidIds) {
+      const payload = createValidPayload({
+        companyName: `InvalidId Corp ${Date.now()}`,
+        assessorId: invalidId
+      });
+      const event = {
+        httpMethod: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': validApiKey
+        },
+        body: JSON.stringify(payload)
+      };
+      const res = await handler(event, {});
+      assert.equal(res.statusCode, 400, `Should reject invalid assessorId "${invalidId}" with 400`);
+      const body = JSON.parse(res.body);
+      assert.match(body.error, /Assessor ID/i);
+    }
   });
 });

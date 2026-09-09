@@ -19,7 +19,7 @@ export const handler = async (event, context) => {
   }
 
   const params = event.queryStringParameters || {};
-  const assessorId = (params.assessorId || '').trim();
+  const assessorId = (params.assessorName || params.assessorId || '').trim();
 
   // Return connected comment plus recent notifications for this assessor
   const recentEvents = getRecentStatusEvents(assessorId);
