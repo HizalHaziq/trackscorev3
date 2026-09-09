@@ -58,6 +58,7 @@ export const handler = async (event, context) => {
     const includeDeleted = params.includeDeleted === 'true' || params.includeDeleted === '1';
     const statusFilter = (params.status || '').trim().toLowerCase();
     const sortBy = params.sortBy === 'statusChangedAt' ? 'statusChangedAt' : 'createdAt';
+    const includeBreakdown = params.includeBreakdown === 'true';
 
     const connection = await connectToDatabase();
     let evaluations = [];
@@ -72,8 +73,9 @@ export const handler = async (event, context) => {
       total = await collection.countDocuments(queryFilter);
       const sortDoc = {};
       sortDoc[sortBy] = -1;
+      const projectionDoc = includeBreakdown ? {} : { breakdown: 0 };
       evaluations = await collection
-        .find(queryFilter)
+        .find(queryFilter, { projection: projectionDoc })
         .sort(sortDoc)
         .skip((page - 1) * limit)
         .limit(limit)
@@ -88,6 +90,9 @@ export const handler = async (event, context) => {
       }
       total = allEvaluations.length;
       evaluations = allEvaluations.slice((page - 1) * limit, page * limit);
+      if (!includeBreakdown) {
+        evaluations = evaluations.map(({ breakdown, ...rest }) => rest);
+      }
     }
 
     const totalPages = Math.ceil(total / limit) || 1;

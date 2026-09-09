@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { handler } from '../netlify/functions/save-evaluation.js';
 import { DEFAULT_ASSESSOR_KEY } from '../netlify/functions/auth.js';
 import { closeDatabaseConnection } from '../netlify/functions/db.js';
+import { recomputeScores } from '../netlify/functions/rubric.js';
 
 describe('save-evaluation.js Integration Suite', () => {
   const validApiKey = process.env.ASSESSOR_API_KEY || DEFAULT_ASSESSOR_KEY;
@@ -24,11 +25,11 @@ describe('save-evaluation.js Integration Suite', () => {
   function createValidPayload(overrides = {}) {
     const timestamp = Date.now();
     const breakdown = [
-      { id: 'trip_history', selectedOption: '3m', points: 1.0 },
+      { id: 'trip_history', selectedOption: '3mo', points: 1.0 },
       { id: 'realtime_tracking', selectedOption: 'Available', points: 1.0 },
       { id: 'geofence', selectedOption: 'Radius', points: 1.0 }
     ];
-    // sectionA = 3.0, sectionB = 0.0, total = 3.0, starRating = (3/43)*5 = 0.35
+    const recomputed = recomputeScores(breakdown);
     return {
       companyName: `Test Fleet Corp ${timestamp}`,
       deviceModel: `TG-800-${timestamp}`,
@@ -37,10 +38,10 @@ describe('save-evaluation.js Integration Suite', () => {
       assessorId: 'MKA 9006',
       assessmentDate: '2026-03-15',
       breakdown,
-      sectionAScore: 3.0,
-      sectionBScore: 0.0,
-      totalScore: 3.0,
-      starRating: 0.35,
+      sectionAScore: recomputed.sectionAScore,
+      sectionBScore: recomputed.sectionBScore,
+      totalScore: recomputed.totalScore,
+      starRating: recomputed.starRating,
       ...overrides
     };
   }
@@ -95,7 +96,7 @@ describe('save-evaluation.js Integration Suite', () => {
     const body = JSON.parse(response.body);
     assert.equal(body.success, true);
     assert.ok(body.id, 'Should return inserted record id');
-    assert.equal(body.verifiedScores.totalScore, 3.0);
+    assert.equal(body.verifiedScores.totalScore, payload.totalScore);
   });
 
   // 3. Tampered totals that do not match recomputed score (400)

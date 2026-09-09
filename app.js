@@ -13,9 +13,9 @@ const SECTION_A_CRITERIA = [
     name: "Trip History Data",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "<=3 months", points: 1.0 },
-      { label: ">3m-1y", points: 1.25 },
-      { label: ">1 year", points: 1.5 }
+      { label: "3mo", points: 1.0 },
+      { label: ">3mo-1yr", points: 0.25 },
+      { label: ">1yr", points: 0.5 }
     ]
   },
   {
@@ -28,12 +28,12 @@ const SECTION_A_CRITERIA = [
   },
   {
     id: "map_source",
-    name: "Map Source",
+    name: "Map",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "Closed", points: 1.0 },
-      { label: "Open", points: 1.25 },
-      { label: "Open updated", points: 1.5 }
+      { label: "Closed source", points: 1.0 },
+      { label: "Open source", points: 0.25 },
+      { label: "Open source + latest update", points: 0.5 }
     ]
   },
   {
@@ -42,7 +42,7 @@ const SECTION_A_CRITERIA = [
     options: [
       { label: "None (0)", points: 0.0 },
       { label: "Radius", points: 1.0 },
-      { label: "Polygon", points: 1.25 }
+      { label: "Polygon", points: 0.25 }
     ]
   },
   {
@@ -50,9 +50,9 @@ const SECTION_A_CRITERIA = [
     name: "Geofence Alert",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "System", points: 1.0 },
-      { label: "SMS/Call", points: 1.25 },
-      { label: "Push", points: 1.5 }
+      { label: "System alert", points: 1.0 },
+      { label: "SMS/WhatsApp/Call", points: 0.25 },
+      { label: "Push", points: 0.5 }
     ]
   },
   {
@@ -60,16 +60,16 @@ const SECTION_A_CRITERIA = [
     name: "Vehicle Status",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "Available", points: 1.0 }
+      { label: "Parked/Driving/Idling", points: 1.0 }
     ]
   },
   {
     id: "engine_status",
-    name: "Engine ON/OFF",
+    name: "Engine ON/OFF Detection",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "System", points: 1.0 },
-      { label: "Report", points: 1.25 }
+      { label: "System alert", points: 1.0 },
+      { label: "Report available", points: 0.25 }
     ]
   },
   {
@@ -78,8 +78,8 @@ const SECTION_A_CRITERIA = [
     options: [
       { label: "None (0)", points: 0.0 },
       { label: "Available", points: 1.0 },
-      { label: "Report", points: 1.25 },
-      { label: "Configurable", points: 1.5 }
+      { label: "Report available", points: 0.25 },
+      { label: "Configurable", points: 0.5 }
     ]
   },
   {
@@ -87,19 +87,19 @@ const SECTION_A_CRITERIA = [
     name: "Overspeed Alert",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "System", points: 1.0 },
-      { label: "SMS/Call", points: 1.25 },
-      { label: "Push", points: 1.5 }
+      { label: "System alert", points: 1.0 },
+      { label: "Notification", points: 0.25 },
+      { label: "Push", points: 0.5 }
     ]
   },
   {
     id: "offline_memory",
-    name: "Offline Memory",
+    name: "Built-in/Offline Memory",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "15m", points: 1.0 },
-      { label: "15-60m", points: 1.25 },
-      { label: ">60m", points: 1.5 }
+      { label: "Last 15 mins", points: 1.0 },
+      { label: ">15-60 mins", points: 0.25 },
+      { label: ">60 mins", points: 0.5 }
     ]
   },
   {
@@ -107,24 +107,24 @@ const SECTION_A_CRITERIA = [
     name: "Backup Battery",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "1h", points: 1.0 },
-      { label: "1-24h", points: 1.25 },
-      { label: ">24h", points: 1.5 }
+      { label: "1 hour", points: 1.0 },
+      { label: ">1-24 hours", points: 0.25 },
+      { label: ">24 hours", points: 0.5 }
     ]
   },
   {
     id: "sim_network",
-    name: "SIM Network",
+    name: "SIM Card Network",
     options: [
       { label: "None (0)", points: 0.0 },
       { label: "2G", points: 1.0 },
-      { label: "4G fallback", points: 1.25 },
-      { label: "Roaming", points: 1.5 }
+      { label: "4G fallback to 2G", points: 0.25 },
+      { label: "Roaming", points: 0.5 }
     ]
   },
   {
     id: "connectivity",
-    name: "Connectivity",
+    name: "Device Connectivity Support",
     options: [
       { label: "None (0)", points: 0.0 },
       { label: "4G", points: 1.0 }
@@ -132,11 +132,11 @@ const SECTION_A_CRITERIA = [
   },
   {
     id: "multilingual",
-    name: "Multilingual",
+    name: "Device Multilingual Support",
     options: [
       { label: "None (0)", points: 0.0 },
       { label: "English", points: 1.0 },
-      { label: "Other", points: 1.25 }
+      { label: "Other language", points: 0.25 }
     ]
   },
   {
@@ -145,16 +145,16 @@ const SECTION_A_CRITERIA = [
     options: [
       { label: "None (0)", points: 0.0 },
       { label: "English", points: 1.0 },
-      { label: "Other", points: 1.25 }
+      { label: "Other language", points: 0.25 }
     ]
   },
   {
     id: "warranty",
-    name: "Warranty",
+    name: "Warranty Period",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "12m", points: 1.0 },
-      { label: ">12m", points: 1.25 }
+      { label: "Min 12 months/subscription", points: 1.0 },
+      { label: ">12 months", points: 0.25 }
     ]
   },
   {
@@ -162,9 +162,9 @@ const SECTION_A_CRITERIA = [
     name: "Customer Service",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "09-19", points: 1.0 },
-      { label: "24/7", points: 1.25 },
-      { label: "Control Centre", points: 1.5 }
+      { label: "Mon-Sun 0900-1900 local", points: 1.0 },
+      { label: "24/7", points: 0.25 },
+      { label: "Physical Control Centre", points: 0.5 }
     ]
   },
   {
@@ -173,8 +173,8 @@ const SECTION_A_CRITERIA = [
     options: [
       { label: "None (0)", points: 0.0 },
       { label: "Web", points: 1.0 },
-      { label: "Apps", points: 1.25 },
-      { label: "Mobile", points: 1.5 }
+      { label: "Apps", points: 0.25 },
+      { label: "Mobile View", points: 0.5 }
     ]
   },
   {
@@ -182,18 +182,18 @@ const SECTION_A_CRITERIA = [
     name: "Trip Report",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "Coords", points: 1.0 },
-      { label: "Duration", points: 1.25 }
+      { label: "Coordinates/local time/speed", points: 1.0 },
+      { label: "Driving+rest duration", points: 0.25 }
     ]
   },
   {
     id: "data_interval",
-    name: "Data Interval",
+    name: "Data Transmission Interval",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "1m", points: 1.0 },
-      { label: "30s-1m", points: 1.25 },
-      { label: "<30s", points: 1.5 }
+      { label: "1 min", points: 1.0 },
+      { label: "30sec-<1min", points: 0.25 },
+      { label: "<30sec", points: 0.5 }
     ]
   },
   {
@@ -202,38 +202,38 @@ const SECTION_A_CRITERIA = [
     options: [
       { label: "None (0)", points: 0.0 },
       { label: "Available", points: 1.0 },
-      { label: "Report", points: 1.25 },
-      { label: "Config", points: 1.5 }
+      { label: "Report available", points: 0.25 },
+      { label: "Configurable", points: 0.5 }
     ]
   },
   {
     id: "harsh_accel_alert",
-    name: "Harsh Accel Alert",
+    name: "Harsh Acceleration Alert",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "System", points: 1.0 },
-      { label: "SMS", points: 1.25 },
-      { label: "Push", points: 1.5 }
+      { label: "System alert", points: 1.0 },
+      { label: "Notification", points: 0.25 },
+      { label: "Push", points: 0.5 }
     ]
   },
   {
     id: "harsh_braking",
-    name: "Harsh Braking",
+    name: "Harsh Braking/Crash Detection",
     options: [
       { label: "None (0)", points: 0.0 },
       { label: "Available", points: 1.0 },
-      { label: "Report", points: 1.25 },
-      { label: "Config", points: 1.5 }
+      { label: "Report available", points: 0.25 },
+      { label: "Configurable", points: 0.5 }
     ]
   },
   {
     id: "harsh_braking_alert",
-    name: "Harsh Braking Alert",
+    name: "Harsh Braking/Crash Detection Alert",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "System", points: 1.0 },
-      { label: "SMS", points: 1.25 },
-      { label: "Push", points: 1.5 }
+      { label: "System alert", points: 1.0 },
+      { label: "Notification", points: 0.25 },
+      { label: "Push", points: 0.5 }
     ]
   }
 ];
@@ -249,44 +249,44 @@ const SECTION_B_CRITERIA = [
   },
   {
     id: "panic_button",
-    name: "Panic Button",
+    name: "Panic/Emergency Button",
     options: [
       { label: "None (0)", points: 0.0 },
       { label: "Available", points: 1.0 },
-      { label: "SMS", points: 1.25 }
+      { label: "SMS/WhatsApp", points: 0.25 }
     ]
   },
   {
     id: "mfa",
-    name: "MFA",
+    name: "Apps Multifactor Authentication/Security",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "OTP", points: 1.0 }
+      { label: "OTP + Security PIN", points: 1.0 }
     ]
   },
   {
     id: "sop_tech_problems",
-    name: "SOP Tech Problems",
+    name: "SOP on Technical Problem",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "3 days", points: 1.0 }
+      { label: "Solved in 3 business days", points: 1.0 }
     ]
   },
   {
     id: "service_records",
-    name: "Service Records",
+    name: "Device Service Records",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "Available", points: 1.0 }
+      { label: "Installation/Renewal/Diagnosis/Warranty Records", points: 1.0 }
     ]
   },
   {
     id: "driver_id",
-    name: "Driver ID",
+    name: "Driver Identification",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "GPS ID", points: 1.0 },
-      { label: "Report", points: 1.25 }
+      { label: "Tracking device with driver ID", points: 1.0 },
+      { label: "Report per driver", points: 0.25 }
     ]
   },
   {
@@ -294,7 +294,7 @@ const SECTION_B_CRITERIA = [
     name: "Certification",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "SIRIM/CE", points: 1.0 }
+      { label: "SIRIM & CE", points: 1.0 }
     ]
   },
   {
@@ -307,33 +307,58 @@ const SECTION_B_CRITERIA = [
   },
   {
     id: "tampered_alert",
-    name: "Tamper Detection & Power Disconnect Alert",
+    name: "Tampered Alert",
     options: [
       { label: "None (0)", points: 0.0 },
-      { label: "System Log", points: 1.0 },
-      { label: "SMS", points: 1.25 },
-      { label: "Push", points: 1.5 }
+      { label: "System alert", points: 1.0 },
+      { label: "Notification", points: 0.25 },
+      { label: "Push", points: 0.5 }
     ]
   }
 ];
 
 // ==========================================================================
-// Authoritative Rubric Version & Dynamic Weight Computation (Item 2 & 5)
-// Section A max, Section B max, and Total max are calculated at runtime
-// by summing the top-tier value of every item in the scoring data arrays.
+// Authoritative Rubric Version & Dynamic Weight Computation (v2.0)
+// Section A max = 3.50, Section B max = 1.50, Total Max = 5.00
+// Implements Raw Point Sectional Scaling
 // ==========================================================================
-const RUBRIC_VERSION = "1.0";
+const RUBRIC_VERSION = "2.0";
 
-function computeSectionMax(criteriaList) {
-  return criteriaList.reduce((sum, item) => {
-    const itemMax = Math.max(...item.options.map(opt => Number(opt.points) || 0), 0);
-    return sum + itemMax;
-  }, 0);
+const MAX_SCORE_A = 3.50;
+const MAX_SCORE_B = 1.50;
+const MAX_TOTAL_SCORE = 5.00;
+
+function computeCriterionMaxRawPoints(criterion) {
+  if (!criterion || !Array.isArray(criterion.options)) return 0;
+  let max = 0;
+  for (let i = 1; i < criterion.options.length; i++) {
+    max += Number(criterion.options[i].points) || 0;
+  }
+  return max;
 }
 
-const MAX_SCORE_A = computeSectionMax(SECTION_A_CRITERIA); // Dynamically 33.00
-const MAX_SCORE_B = computeSectionMax(SECTION_B_CRITERIA); // Dynamically 10.00
-const MAX_TOTAL_SCORE = MAX_SCORE_A + MAX_SCORE_B;         // Dynamically 43.00
+function computeSectionMaxRaw(criteriaList) {
+  return criteriaList.reduce((sum, item) => sum + computeCriterionMaxRawPoints(item), 0);
+}
+
+const MAX_RAW_SCORE_A = computeSectionMaxRaw(SECTION_A_CRITERIA); // 36.75
+const MAX_RAW_SCORE_B = computeSectionMaxRaw(SECTION_B_CRITERIA); // 10.25
+const MAX_RAW_TOTAL = MAX_RAW_SCORE_A + MAX_RAW_SCORE_B;         // 47.00
+
+function computeItemRawPoints(criterion, optionIndex) {
+  if (!criterion || !Array.isArray(criterion.options) || optionIndex <= 0) return 0;
+  let earned = 0;
+  for (let i = 1; i <= Math.min(optionIndex, criterion.options.length - 1); i++) {
+    earned += Number(criterion.options[i].points) || 0;
+  }
+  return earned;
+}
+
+function computeSectionMax(criteriaList) {
+  if (criteriaList === SECTION_A_CRITERIA || criteriaList?.length === 24) return MAX_SCORE_A;
+  if (criteriaList === SECTION_B_CRITERIA || criteriaList?.length === 9) return MAX_SCORE_B;
+  return MAX_TOTAL_SCORE;
+}
 
 // API Shared Secret & Role-Based Access (Hardening Pass 2)
 // Frontend sends x-api-key header with every API request (save, get, update, delete)
@@ -363,8 +388,8 @@ const assessmentState = {
     sectionB: 0.0,
     total: 0.0,
     starRating: 0.0,
-    starsCount: 1,
-    ratingLabel: "1 Star"
+    starsCount: 0,
+    ratingLabel: "0 Stars - Not Rated (MIROS Non-Compliant)"
   }
 };
 
@@ -389,7 +414,7 @@ function renderCriteriaSection(criteriaList, containerId, sectionPrefix) {
     rowEl.setAttribute("aria-labelledby", `label-${criterion.id}`);
 
     // Max score for this item
-    const maxPoints = Math.max(...criterion.options.map(o => o.points));
+    const maxPoints = computeCriterionMaxRawPoints(criterion);
 
     const metaHtml = `
       <div class="criterion-meta" id="label-${criterion.id}">
@@ -407,6 +432,7 @@ function renderCriteriaSection(criteriaList, containerId, sectionPrefix) {
       const isNone = opt.points === 0;
       const isAnswered = !!(assessmentState.answeredCriteria && assessmentState.answeredCriteria[criterion.id]);
       const isSelected = isAnswered && assessmentState.selectedItems[criterion.id]?.selectedOption === opt.label;
+      const optRawPoints = computeItemRawPoints(criterion, optIdx);
 
       optionsHtml += `
         <label class="option-label ${isNone ? 'is-none' : ''}" for="${inputId}">
@@ -415,6 +441,8 @@ function renderCriteriaSection(criteriaList, containerId, sectionPrefix) {
             id="${inputId}"
             name="crit_${criterion.id}"
             value="${opt.points}"
+            data-opt-idx="${optIdx}"
+            data-raw-points="${optRawPoints}"
             data-label="${opt.label}"
             data-section="${sectionPrefix}"
             data-crit-id="${criterion.id}"
@@ -440,6 +468,7 @@ function renderCriteriaSection(criteriaList, containerId, sectionPrefix) {
         id: criterion.id,
         name: criterion.name,
         selectedOption: "None (0)",
+        tierPoints: 0.0,
         points: 0.0
       };
     }
@@ -447,53 +476,67 @@ function renderCriteriaSection(criteriaList, containerId, sectionPrefix) {
 }
 
 // ==========================================================================
-// 3. Calculation & Real-Time State Capture
+// 3. Calculation & Real-Time State Capture (v2.0 Raw Point Sectional Scaling)
 // ==========================================================================
 
 function calculateScores() {
-  let scoreA = 0.0;
-  let scoreB = 0.0;
+  let rawEarnedA = 0.0;
+  let rawEarnedB = 0.0;
 
   Object.values(assessmentState.selectedItems).forEach(item => {
     if (item.section === "A") {
-      scoreA += item.points;
+      rawEarnedA += Number(item.points) || 0;
     } else if (item.section === "B") {
-      scoreB += item.points;
+      rawEarnedB += Number(item.points) || 0;
     }
   });
 
-  const total = scoreA + scoreB;
-  const rawStarRating = (total / MAX_TOTAL_SCORE) * 5.0;
+  const scoreA = MAX_RAW_SCORE_A > 0 ? (rawEarnedA / MAX_RAW_SCORE_A) * MAX_SCORE_A : 0.0;
+  const scoreB = MAX_RAW_SCORE_B > 0 ? (rawEarnedB / MAX_RAW_SCORE_B) * MAX_SCORE_B : 0.0;
 
-  // Star Rating Conversion Rules as specified:
-  // If >= 4.5 (5 Stars), >= 3.75 (4 Stars), >= 3.0 (3 Stars), >= 2.0 (2 Stars), else 1 Star.
-  let starsCount = 1;
-  let ratingLabel = "1 Star - Non-Compliant";
+  const finalScoreA = parseFloat(Math.min(scoreA, MAX_SCORE_A).toFixed(2));
+  const finalScoreB = parseFloat(Math.min(scoreB, MAX_SCORE_B).toFixed(2));
+  const finalTotal = parseFloat(Math.min(finalScoreA + finalScoreB, MAX_TOTAL_SCORE).toFixed(2));
 
-  if (rawStarRating >= 4.5) {
+  // Star Rating Conversion Rules on 5.0 scale:
+  // 4.50 - 5.00: 5 Stars (Grade A)
+  // 3.75 - 4.49: 4 Stars (Grade B)
+  // 3.00 - 3.74: 3 Stars (Grade C)
+  // 2.00 - 2.99: 2 Stars (Grade D)
+  // 1.25 - 1.99: 1 Star  (Grade E)
+  // Below 1.25:  0 Stars (Not Rated)
+  let starsCount = 0;
+  let ratingLabel = "0 Stars - Not Rated (MIROS Non-Compliant)";
+
+  if (finalTotal >= 4.50) {
     starsCount = 5;
     ratingLabel = "5 Stars - Outstanding (MIROS Certified Grade A)";
-  } else if (rawStarRating >= 3.75) {
+  } else if (finalTotal >= 3.75) {
     starsCount = 4;
     ratingLabel = "4 Stars - Very Good (MIROS Grade B)";
-  } else if (rawStarRating >= 3.0) {
+  } else if (finalTotal >= 3.00) {
     starsCount = 3;
     ratingLabel = "3 Stars - Satisfactory (MIROS Grade C)";
-  } else if (rawStarRating >= 2.0) {
+  } else if (finalTotal >= 2.00) {
     starsCount = 2;
     ratingLabel = "2 Stars - Marginal (MIROS Grade D)";
-  } else {
+  } else if (finalTotal >= 1.25) {
     starsCount = 1;
-    ratingLabel = "1 Star - Non-Compliant (MIROS Grade E)";
+    ratingLabel = "1 Star - Substandard (MIROS Grade E)";
+  } else {
+    starsCount = 0;
+    ratingLabel = "0 Stars - Not Rated (MIROS Non-Compliant)";
   }
 
   assessmentState.scores = {
-    sectionA: parseFloat(scoreA.toFixed(2)),
-    sectionB: parseFloat(scoreB.toFixed(2)),
-    total: parseFloat(total.toFixed(2)),
-    starRating: parseFloat(rawStarRating.toFixed(2)),
+    sectionA: finalScoreA,
+    sectionB: finalScoreB,
+    total: finalTotal,
+    starRating: finalTotal,
     starsCount,
-    ratingLabel
+    ratingLabel,
+    rawEarnedA: parseFloat(rawEarnedA.toFixed(2)),
+    rawEarnedB: parseFloat(rawEarnedB.toFixed(2))
   };
 
   updateScoreUI();
@@ -531,7 +574,10 @@ function handleOptionChange(event) {
   const critName = radio.getAttribute("data-crit-name");
   const section = radio.getAttribute("data-section");
   const selectedOption = radio.getAttribute("data-label");
-  const points = parseFloat(radio.value);
+  const optIdx = parseInt(radio.getAttribute("data-opt-idx"), 10) || 0;
+  const critList = section === "A" ? SECTION_A_CRITERIA : SECTION_B_CRITERIA;
+  const crit = critList.find(c => c.id === critId);
+  const earnedRaw = computeItemRawPoints(crit, optIdx);
 
   // Update selected state record
   assessmentState.selectedItems[critId] = {
@@ -539,7 +585,8 @@ function handleOptionChange(event) {
     id: critId,
     name: critName,
     selectedOption,
-    points
+    tierPoints: parseFloat(radio.value) || 0,
+    points: earnedRaw
   };
 
   // Update visual indicators for this row
@@ -547,7 +594,7 @@ function handleOptionChange(event) {
   const badgeEl = document.getElementById(`badge-${critId}`);
 
   if (rowEl) {
-    if (points > 0) {
+    if (earnedRaw > 0) {
       rowEl.classList.add("has-score");
     } else {
       rowEl.classList.remove("has-score");
@@ -555,9 +602,9 @@ function handleOptionChange(event) {
   }
 
   if (badgeEl) {
-    if (points > 0) {
+    if (earnedRaw > 0) {
       badgeEl.classList.add("scored");
-      badgeEl.textContent = `Awarded: ${points.toFixed(2)} pts`;
+      badgeEl.textContent = `Awarded: ${earnedRaw.toFixed(2)} pts`;
     } else {
       badgeEl.classList.remove("scored");
       badgeEl.textContent = "0.00 pts";
@@ -1296,15 +1343,16 @@ function restoreDraft(draft) {
     const badgeEl = document.getElementById(`badge-${criterion.id}`);
     if (badgeEl) {
       badgeEl.classList.remove('scored');
-      const maxPts = Math.max(...criterion.options.map(o => o.points));
+      const maxPts = computeCriterionMaxRawPoints(criterion);
       badgeEl.textContent = `Max ${maxPts.toFixed(2)} pts`;
     }
     // Default initial selected item for baseline calculations
     assessmentState.selectedItems[criterion.id] = {
-      section: criterion.section || (criterion.id.startsWith("1.") || criterion.id.startsWith("2.") ? "A" : "B"),
+      section: criterion.section || (SECTION_A_CRITERIA.some(c => c.id === criterion.id) ? "A" : "B"),
       id: criterion.id,
       name: criterion.name,
       selectedOption: "None (0)",
+      tierPoints: 0.0,
       points: 0.0
     };
   });
@@ -1325,8 +1373,11 @@ function restoreDraft(draft) {
 
       if (matchingRadio) {
         matchingRadio.checked = true;
-        const points = parseFloat(matchingRadio.value);
+        const optIdx = parseInt(matchingRadio.getAttribute("data-opt-idx"), 10) || 0;
         const section = matchingRadio.getAttribute("data-section") || sel.section;
+        const critList = section === "A" ? SECTION_A_CRITERIA : SECTION_B_CRITERIA;
+        const crit = critList.find(c => c.id === critId);
+        const earnedRaw = computeItemRawPoints(crit, optIdx);
         const critName = matchingRadio.getAttribute("data-crit-name") || sel.name;
         
         assessmentState.answeredCriteria[critId] = true;
@@ -1335,19 +1386,20 @@ function restoreDraft(draft) {
           id: critId,
           name: critName,
           selectedOption: matchingRadio.getAttribute("data-label") || sel.selectedOption,
-          points
+          tierPoints: parseFloat(matchingRadio.value) || 0,
+          points: earnedRaw
         };
 
         const rowEl = document.getElementById(`row-${critId}`);
         const badgeEl = document.getElementById(`badge-${critId}`);
         if (rowEl) {
-          if (points > 0) rowEl.classList.add("has-score");
+          if (earnedRaw > 0) rowEl.classList.add("has-score");
           else rowEl.classList.remove("has-score");
         }
         if (badgeEl) {
-          if (points > 0) {
+          if (earnedRaw > 0) {
             badgeEl.classList.add("scored");
-            badgeEl.textContent = `Awarded: ${points.toFixed(2)} pts`;
+            badgeEl.textContent = `Awarded: ${earnedRaw.toFixed(2)} pts`;
           } else {
             badgeEl.classList.remove("scored");
             badgeEl.textContent = "0.00 pts";
@@ -1709,7 +1761,7 @@ async function lookupAssessorSubmissions(queryStr) {
           </div>
 
           <div style="font-size: 12.5px; color: #475569; margin-top: 8px;">
-            <strong>Score:</strong> ${Number(sub.totalScore || 0).toFixed(2)}/43.00 (${Number(sub.starRating || 0).toFixed(2)}★) &bull; <em>${escapeHtml(sub.ratingLabel || '')}</em>
+            <strong>Score:</strong> ${Number(sub.totalScore || 0).toFixed(2)}/${sub.rubricVersion === '1.0' ? '43.00' : '5.00'} (${Number(sub.starRating || 0).toFixed(2)}★) &bull; <em>${escapeHtml(sub.ratingLabel || '')}</em>
           </div>
 
           ${isApproved ? `
@@ -1782,27 +1834,31 @@ async function loadEvaluationForCorrection(recordId) {
         }
         if (radio) {
           radio.checked = true;
-          const points = parseFloat(radio.value);
+          const optIdx = parseInt(radio.getAttribute("data-opt-idx"), 10) || 0;
           const section = radio.getAttribute("data-section");
-          const critName = radio.getAttribute("data-crit-name");
+          const critList = section === "A" ? SECTION_A_CRITERIA : SECTION_B_CRITERIA;
+          const crit = critList.find(c => c.id === item.id);
+          const earnedRaw = computeItemRawPoints(crit, optIdx);
+          const critName = radio.getAttribute("data-crit-name") || item.name;
           assessmentState.selectedItems[item.id] = {
             section,
             id: item.id,
             name: critName,
             selectedOption: item.selectedOption,
-            points
+            tierPoints: parseFloat(radio.value) || 0,
+            points: earnedRaw
           };
           assessmentState.answeredCriteria[item.id] = true;
           const rowEl = document.getElementById(`row-${item.id}`);
           const badgeEl = document.getElementById(`badge-${item.id}`);
           if (rowEl) {
-            if (points > 0) rowEl.classList.add("has-score");
+            if (earnedRaw > 0) rowEl.classList.add("has-score");
             else rowEl.classList.remove("has-score");
           }
           if (badgeEl) {
-            if (points > 0) {
+            if (earnedRaw > 0) {
               badgeEl.classList.add("scored");
-              badgeEl.textContent = `Awarded: ${points.toFixed(2)} pts`;
+              badgeEl.textContent = `Awarded: ${earnedRaw.toFixed(2)} pts`;
             } else {
               badgeEl.classList.remove("scored");
               badgeEl.textContent = "0.00 pts";
@@ -1962,13 +2018,13 @@ function generatePdfReport() {
           <tbody>
             <tr style="background-color: #FFFFFF;">
               <td style="padding: 6px 8px; font-size: 13px; font-weight: 800; border-right: 1px solid #E2E8F0;">
-                ${sectionA.toFixed(2)} <span style="font-size: 9.5px; font-weight: 500; color: #64748B;">/ 33.00</span>
+                ${sectionA.toFixed(2)} <span style="font-size: 9.5px; font-weight: 500; color: #64748B;">/ ${MAX_SCORE_A.toFixed(2)}</span>
               </td>
               <td style="padding: 6px 8px; font-size: 13px; font-weight: 800; border-right: 1px solid #E2E8F0;">
-                ${sectionB.toFixed(2)} <span style="font-size: 9.5px; font-weight: 500; color: #64748B;">/ 10.00</span>
+                ${sectionB.toFixed(2)} <span style="font-size: 9.5px; font-weight: 500; color: #64748B;">/ ${MAX_SCORE_B.toFixed(2)}</span>
               </td>
               <td style="padding: 6px 8px; font-size: 15px; font-weight: 900; color: #F58220; border-right: 1px solid #E2E8F0;">
-                ${total.toFixed(2)} <span style="font-size: 10px; font-weight: 600; color: #64748B;">/ 43.00</span>
+                ${total.toFixed(2)} <span style="font-size: 10px; font-weight: 600; color: #64748B;">/ ${MAX_TOTAL_SCORE.toFixed(2)}</span>
               </td>
               <td style="padding: 6px 8px;">
                 <div style="font-size: 13px; font-weight: 800; color: #B45309;">
@@ -2086,8 +2142,27 @@ function generatePdfReport() {
   }
 }
 
+// Lazy-load html2pdf only when PDF generation is requested
+let html2pdfLoadingPromise = null;
+function loadHtml2Pdf() {
+  if (window.html2pdf) return Promise.resolve(window.html2pdf);
+  if (html2pdfLoadingPromise) return html2pdfLoadingPromise;
+  html2pdfLoadingPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    script.async = true;
+    script.onload = () => resolve(window.html2pdf);
+    script.onerror = (err) => {
+      html2pdfLoadingPromise = null;
+      reject(err);
+    };
+    document.head.appendChild(script);
+  });
+  return html2pdfLoadingPromise;
+}
+
 // Download the currently generated report as a PDF file
-function downloadReportPdf(showMessage = true) {
+async function downloadReportPdf(showMessage = true) {
   if (!currentReportHtml) {
     showToast("Please generate the report first before downloading.", true);
     return;
@@ -2098,6 +2173,19 @@ function downloadReportPdf(showMessage = true) {
   const statusBadge = document.getElementById("report-status-badge");
 
   if (downloadBtn) downloadBtn.disabled = true;
+  if (downloadText) downloadText.textContent = "Loading PDF engine...";
+  if (statusBadge) statusBadge.textContent = "Loading PDF generator...";
+
+  try {
+    await loadHtml2Pdf();
+  } catch (loadErr) {
+    if (downloadText) downloadText.textContent = "Download PDF File";
+    if (downloadBtn) downloadBtn.disabled = false;
+    if (statusBadge) statusBadge.textContent = "PDF engine load failed";
+    showToast("Failed to load PDF engine: " + loadErr.message, true);
+    return;
+  }
+
   if (downloadText) downloadText.textContent = "Generating PDF...";
   if (statusBadge) statusBadge.textContent = "Compiling 1-page PDF document...";
 
@@ -2112,13 +2200,13 @@ function downloadReportPdf(showMessage = true) {
       useCORS: true, 
       logging: false,
       scrollY: 0,
-      windowHeight: element.scrollHeight
+      windowHeight: element ? element.scrollHeight : undefined
     },
     jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
     pagebreak: { mode: ['css', 'legacy'] }
   };
 
-  if (window.html2pdf) {
+  if (window.html2pdf && element) {
     window.html2pdf()
       .from(element)
       .set(opt)
@@ -2844,7 +2932,8 @@ function showStatusBanner(evt) {
   const reviewer = evt.reviewedBy ? ` by ${evt.reviewedBy}` : (evt.approvedBy ? ` by ${evt.approvedBy}` : (evt.rejectedBy ? ` by ${evt.rejectedBy}` : ""));
 
   if (isApproved) {
-    const scoreStr = evt.totalScore !== undefined ? ` [Score: ${Number(evt.totalScore).toFixed(2)}/43.00, ${evt.ratingLabel || 'Grade A'}]` : "";
+    const maxScoreVal = evt.rubricVersion === '1.0' ? '43.00' : '5.00';
+    const scoreStr = evt.totalScore !== undefined ? ` [Score: ${Number(evt.totalScore).toFixed(2)}/${maxScoreVal}, ${evt.ratingLabel || 'Grade A'}]` : "";
     textEl.innerHTML = `<strong>Evaluation Approved:</strong> ${escapeHtml(comp)}${escapeHtml(model)}${scoreStr} was approved${escapeHtml(reviewer)}. Record is locked from further edits.`;
     if (actionBtn) {
       actionBtn.style.display = "inline-flex";
@@ -2882,9 +2971,10 @@ function showStatusToast(evt) {
 
   let scoreDetailsHtml = "";
   if (isApproved && evt.totalScore !== undefined) {
+    const maxScoreVal = evt.rubricVersion === '1.0' ? '43.00' : '5.00';
     const stars = evt.starsCount ? "★".repeat(evt.starsCount) : "";
     scoreDetailsHtml = `<div style="font-size: 11.5px; color: #166534; margin-top: 2px; font-weight: 600;">
-      Score: ${Number(evt.totalScore).toFixed(2)}/43.00 pts • ${escapeHtml(evt.ratingLabel || 'Grade A')} ${stars}
+      Score: ${Number(evt.totalScore).toFixed(2)}/${maxScoreVal} pts • ${escapeHtml(evt.ratingLabel || 'Grade A')} ${stars}
     </div>`;
   }
 
@@ -3217,7 +3307,7 @@ function renderNotificationCardsList() {
 
           <div class="notif-approval-callout">
             <div>
-              <strong>Certified Score:</strong> ${score} / 43.00 pts
+              <strong>Certified Score:</strong> ${score} / ${item.rubricVersion === '1.0' ? '43.00' : '5.00'} pts
               ${rating ? `• <strong>${escapeHtml(rating)}</strong>` : ''}
               ${stars ? `<span style="color: #F59E0B; margin-left: 4px;">${stars}</span>` : ''}
             </div>
@@ -3346,12 +3436,17 @@ function initNotificationSection() {
   // Collapse / Expand toggle
   document.getElementById("btn-toggle-notif-collapse")?.addEventListener("click", toggleNotificationSectionCollapse);
 
-  // Search input
+  // Search input (debounced 300ms to prevent rapid DOM re-renders)
   const searchInput = document.getElementById("notif-search-input");
   if (searchInput) {
+    let notifSearchTimer = null;
     searchInput.addEventListener("input", (e) => {
-      notificationsFeedState.searchQuery = e.target.value;
-      renderNotificationCardsList();
+      clearTimeout(notifSearchTimer);
+      const val = e.target.value;
+      notifSearchTimer = setTimeout(() => {
+        notificationsFeedState.searchQuery = val;
+        renderNotificationCardsList();
+      }, 300);
     });
   }
 

@@ -162,6 +162,26 @@ export function buildMongoIdFilter(id) {
   return { _id: String(id) };
 }
 
+let indexesEnsured = false;
+
+export async function ensureDatabaseIndexes(db) {
+  if (indexesEnsured || !db) return;
+  try {
+    const col = db.collection(COLLECTION_NAME);
+    await Promise.allSettled([
+      col.createIndex({ status: 1 }, { background: true }),
+      col.createIndex({ assessorId: 1 }, { background: true }),
+      col.createIndex({ createdAt: -1 }, { background: true }),
+      col.createIndex({ statusChangedAt: -1 }, { background: true }),
+      col.createIndex({ companyName: 1, deviceModel: 1, assessorName: 1, assessmentDate: 1 }, { background: true }),
+      col.createIndex({ deletedAt: 1, status: 1, createdAt: -1 }, { background: true })
+    ]);
+    indexesEnsured = true;
+  } catch (err) {
+    console.warn('[DB-INDEX] Non-blocking index creation note:', err.message);
+  }
+}
+
 export async function connectToDatabase() {
   const uri = process.env.MONGODB_URI;
 
@@ -189,6 +209,7 @@ export async function connectToDatabase() {
       const db = client.db(DB_NAME);
       cachedClient = client;
       cachedDb = db;
+      ensureDatabaseIndexes(db).catch(() => {});
       lastAtlasErrorMessage = null;
       isIpWhitelistBlocked = false;
       console.log('Successfully established connection to MongoDB Atlas cluster.');

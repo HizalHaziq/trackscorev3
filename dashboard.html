@@ -12,7 +12,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/style.css" />
     <script src="/api/config.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
       .pulse-dot {
         width: 8px;
@@ -34,8 +33,8 @@
     <header class="site-header" id="dashboard-header">
       <div class="header-inner">
         <a href="/index.html" class="brand-wrapper" id="brand-link" title="TrackScore Home">
-          <img src="/TrackScore_Logo.svg" alt="TrackScore" class="brand-logo-desktop" height="40" />
-          <img src="/TrackScore_TS_Icon.svg" alt="TrackScore" class="brand-logo-mobile" height="38" />
+          <img src="/TrackScore_Logo.svg" alt="TrackScore" class="brand-logo-desktop" width="200" height="40" />
+          <img src="/TrackScore_TS_Icon.svg" alt="TrackScore" class="brand-logo-mobile" width="38" height="38" />
           <div class="brand-details">
             <span class="brand-badge">Managerial Review</span>
             <p class="brand-subtitle">Telematics Assessment Registry &amp; Verification History</p>
@@ -84,13 +83,13 @@
         <div class="stat-card">
           <div class="stat-title">Average Total Score</div>
           <div class="stat-number" id="stat-avg-score">0.00</div>
-          <div class="stat-meta">Out of 43.00 maximum marks</div>
+          <div class="stat-meta">Out of 5.00 maximum marks</div>
         </div>
 
         <div class="stat-card">
           <div class="stat-title">Grade A Certified (5★)</div>
           <div class="stat-number" id="stat-five-star">0</div>
-          <div class="stat-meta">Score &ge; 4.5 / 5.0 (38.7+ pts)</div>
+          <div class="stat-meta">Score &ge; 4.50 / 5.00</div>
         </div>
 
         <div class="stat-card">
@@ -211,9 +210,9 @@
               <th>Device Model</th>
               <th>Status</th>
               <th>Package</th>
-              <th>Section A (/33)</th>
-              <th>Section B (/10)</th>
-              <th class="orange-head">Total (/43)</th>
+              <th>Section A (/3.50)</th>
+              <th>Section B (/1.50)</th>
+              <th class="orange-head">Total (/5.00)</th>
               <th>Star Rating</th>
               <th style="text-align: right;">Actions</th>
             </tr>
@@ -1133,7 +1132,56 @@
       // ==========================================================================
       // Full Itemized Breakdown & Audit Trail Timeline
       // ==========================================================================
-      function openEvaluationDetails(evalId) {
+      // Lazy-load html2pdf only when PDF generation is requested
+      let html2pdfLoadingPromise = null;
+      function loadHtml2Pdf() {
+        if (window.html2pdf) return Promise.resolve(window.html2pdf);
+        if (html2pdfLoadingPromise) return html2pdfLoadingPromise;
+        html2pdfLoadingPromise = new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+          script.async = true;
+          script.onload = () => resolve(window.html2pdf);
+          script.onerror = (err) => {
+            html2pdfLoadingPromise = null;
+            reject(err);
+          };
+          document.head.appendChild(script);
+        });
+        return html2pdfLoadingPromise;
+      }
+
+      // On-demand fetch of detailed breakdown for records loaded via summary projection
+      async function ensureRecordBreakdown(record) {
+        if (!record) return record;
+        if (Array.isArray(record.breakdown) && record.breakdown.length > 0) {
+          return record;
+        }
+        const recordId = record._id || record.id;
+        if (!recordId) return record;
+        try {
+          const res = await fetch(`/.netlify/functions/lookup-evaluation?id=${encodeURIComponent(recordId)}`, {
+            headers: { 'x-api-key': getManagerApiKey() }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const fullRecord = data.record || (Array.isArray(data.data) ? data.data[0] : null);
+            if (fullRecord) {
+              if (Array.isArray(fullRecord.breakdown)) {
+                record.breakdown = fullRecord.breakdown;
+              }
+              if (Array.isArray(fullRecord.evaluationHistory)) {
+                record.evaluationHistory = fullRecord.evaluationHistory;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("Could not fetch detailed breakdown for record:", recordId, err);
+        }
+        return record;
+      }
+
+      async function openEvaluationDetails(evalId) {
         const record = evaluationsList.find(r => (r._id === evalId || r.id === evalId));
         if (!record) return;
 
@@ -1141,6 +1189,20 @@
 
         document.getElementById("modal-record-id").textContent = record._id || record.id || "N/A";
         document.getElementById("modal-title").textContent = `${record.companyName} • ${record.deviceModel}`;
+
+        if (!Array.isArray(record.breakdown) || record.breakdown.length === 0) {
+          const bodyEl = document.getElementById("modal-body");
+          if (bodyEl) {
+            bodyEl.innerHTML = `
+              <div style="text-align: center; padding: 48px 24px;">
+                <div class="spinner-inline" style="width: 28px; height: 28px; border-width: 3px;"></div>
+                <div style="margin-top: 12px; font-weight: 600; color: #64748B;">Loading itemized breakdown...</div>
+              </div>
+            `;
+          }
+          document.getElementById("details-modal").classList.add("active");
+          await ensureRecordBreakdown(record);
+        }
 
         const starsCount = record.starsCount || 1;
         let starDisplay = "";
@@ -1249,6 +1311,11 @@
           `;
         }
 
+        const isLegacyRubric = record.rubricVersion === '1.0';
+        const maxScoreA = isLegacyRubric ? 33.00 : 3.50;
+        const maxScoreB = isLegacyRubric ? 10.00 : 1.50;
+        const maxTotal = isLegacyRubric ? 43.00 : 5.00;
+
         document.getElementById("modal-body").innerHTML = `
           ${statusBannerHtml}
 
@@ -1286,17 +1353,17 @@
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; margin-bottom: 24px;">
             <div style="border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px; text-align: center; background: #FFFFFF;">
               <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">Section A Score</div>
-              <div style="font-size: 22px; font-weight: 800; color: #1A1A1A; margin-top: 4px;">${(record.sectionAScore || 0).toFixed(2)} <span style="font-size: 12px; color: #94A3B8;">/ 33</span></div>
+              <div style="font-size: 22px; font-weight: 800; color: #1A1A1A; margin-top: 4px;">${(record.sectionAScore || 0).toFixed(2)} <span style="font-size: 12px; color: #94A3B8;">/ ${maxScoreA.toFixed(2)}</span></div>
             </div>
 
             <div style="border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px; text-align: center; background: #FFFFFF;">
               <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">Section B Score</div>
-              <div style="font-size: 22px; font-weight: 800; color: #1A1A1A; margin-top: 4px;">${(record.sectionBScore || 0).toFixed(2)} <span style="font-size: 12px; color: #94A3B8;">/ 10</span></div>
+              <div style="font-size: 22px; font-weight: 800; color: #1A1A1A; margin-top: 4px;">${(record.sectionBScore || 0).toFixed(2)} <span style="font-size: 12px; color: #94A3B8;">/ ${maxScoreB.toFixed(2)}</span></div>
             </div>
 
             <div style="border: 2px solid #F58220; border-radius: 6px; padding: 12px; text-align: center; background: #FFF7ED;">
               <div style="font-size: 11px; font-weight: 800; color: #C2410C; text-transform: uppercase;">Total Score</div>
-              <div style="font-size: 24px; font-weight: 900; color: #F58220; margin-top: 4px;">${(record.totalScore || 0).toFixed(2)} <span style="font-size: 13px; color: #C2410C;">/ 43</span></div>
+              <div style="font-size: 24px; font-weight: 900; color: #F58220; margin-top: 4px;">${(record.totalScore || 0).toFixed(2)} <span style="font-size: 13px; color: #C2410C;">/ ${maxTotal.toFixed(2)}</span></div>
             </div>
 
             <div style="border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px; text-align: center; background: #FFFFFF;">
@@ -1830,7 +1897,7 @@
       let currentReportHtml = null;
       let currentReportFilename = null;
 
-      function viewEvaluationReport(evalId) {
+      async function viewEvaluationReport(evalId) {
         if (!evalId && activeEvaluation) {
           evalId = activeEvaluation._id || activeEvaluation.id;
         }
@@ -1838,6 +1905,11 @@
         if (!record) {
           showToast("Evaluation record not found.", true);
           return;
+        }
+
+        if (!Array.isArray(record.breakdown) || record.breakdown.length === 0) {
+          showToast("Loading report details...");
+          await ensureRecordBreakdown(record);
         }
 
         activeEvaluation = record;
@@ -1852,6 +1924,11 @@
         const starRating = Number(record.starRating || 1);
         const starsCount = record.starsCount || 1;
         const ratingLabel = record.ratingLabel || "";
+
+        const isLegacyRubric = record.rubricVersion === '1.0';
+        const maxScoreA = isLegacyRubric ? 33.00 : 3.50;
+        const maxScoreB = isLegacyRubric ? 10.00 : 1.50;
+        const maxTotal = isLegacyRubric ? 43.00 : 5.00;
 
         let starDisplay = "";
         for (let s = 1; s <= 5; s++) {
@@ -1964,13 +2041,13 @@
                 <tbody>
                   <tr style="background-color: #FFFFFF;">
                     <td style="padding: 6px 8px; font-size: 13px; font-weight: 800; border-right: 1px solid #E2E8F0;">
-                      ${sectionA.toFixed(2)} <span style="font-size: 9.5px; font-weight: 500; color: #64748B;">/ 33.00</span>
+                      ${sectionA.toFixed(2)} <span style="font-size: 9.5px; font-weight: 500; color: #64748B;">/ ${maxScoreA.toFixed(2)}</span>
                     </td>
                     <td style="padding: 6px 8px; font-size: 13px; font-weight: 800; border-right: 1px solid #E2E8F0;">
-                      ${sectionB.toFixed(2)} <span style="font-size: 9.5px; font-weight: 500; color: #64748B;">/ 10.00</span>
+                      ${sectionB.toFixed(2)} <span style="font-size: 9.5px; font-weight: 500; color: #64748B;">/ ${maxScoreB.toFixed(2)}</span>
                     </td>
                     <td style="padding: 6px 8px; font-size: 15px; font-weight: 900; color: #F58220; border-right: 1px solid #E2E8F0;">
-                      ${total.toFixed(2)} <span style="font-size: 10px; font-weight: 600; color: #64748B;">/ 43.00</span>
+                      ${total.toFixed(2)} <span style="font-size: 10px; font-weight: 600; color: #64748B;">/ ${maxTotal.toFixed(2)}</span>
                     </td>
                     <td style="padding: 6px 8px;">
                       <div style="font-size: 13px; font-weight: 800; color: #B45309;">
@@ -2121,7 +2198,7 @@
         }
       }
 
-      function downloadReportPdf(showMessage = true) {
+      async function downloadReportPdf(showMessage = true) {
         if (!currentReportHtml) {
           showToast("Please open a report first before downloading.", true);
           return;
@@ -2132,6 +2209,19 @@
         const statusBadge = document.getElementById("report-status-badge");
 
         if (downloadBtn) downloadBtn.disabled = true;
+        if (downloadText) downloadText.textContent = "Loading PDF engine...";
+        if (statusBadge) statusBadge.textContent = "Loading PDF generator...";
+
+        try {
+          await loadHtml2Pdf();
+        } catch (loadErr) {
+          if (downloadText) downloadText.textContent = "Download PDF File";
+          if (downloadBtn) downloadBtn.disabled = false;
+          if (statusBadge) statusBadge.textContent = "PDF engine load failed";
+          showToast("Failed to load PDF engine: " + loadErr.message, true);
+          return;
+        }
+
         if (downloadText) downloadText.textContent = "Generating PDF...";
         if (statusBadge) statusBadge.textContent = "Compiling 1-page PDF document...";
 
@@ -2232,11 +2322,20 @@
         }, 3500);
       }
 
+      // Performance utility: debounce input events to prevent excessive recalculations
+      function debounce(fn, delay = 300) {
+        let timer = null;
+        return function (...args) {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn.apply(this, args), delay);
+        };
+      }
+
       // Attach UI event listeners
       document.addEventListener("DOMContentLoaded", () => {
         fetchEvaluations();
 
-        document.getElementById("table-search")?.addEventListener("input", () => renderEvaluationsTable(evaluationsList));
+        document.getElementById("table-search")?.addEventListener("input", debounce(() => renderEvaluationsTable(evaluationsList), 300));
         document.getElementById("rating-filter")?.addEventListener("change", () => renderEvaluationsTable(evaluationsList));
         document.getElementById("status-filter")?.addEventListener("change", () => fetchEvaluations(1, currentLimit));
         document.getElementById("btn-refresh")?.addEventListener("click", () => fetchEvaluations(currentPage, currentLimit));

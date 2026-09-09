@@ -113,6 +113,7 @@ export const handler = async (event, context) => {
           approvedBy: r.approvedBy || null,
           approvedAt: r.approvedAt || null,
           breakdown: r.breakdown || [],
+          evaluationHistory: r.evaluationHistory || [],
           createdAt: r.createdAt
         }))
       })
