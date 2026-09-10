@@ -130,7 +130,7 @@
           />
         </div>
 
-        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <div class="dashboard-filter-toolbar" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
           <select id="status-filter" class="form-control" style="width: auto; padding: 8px 12px; font-size: 13px;" title="Filter by Approval Status" onchange="fetchEvaluations(1, currentLimit)">
             <option value="all">All Statuses</option>
             <option value="pending_review">Pending Review</option>
@@ -198,6 +198,13 @@
             Combined PDF
           </button>
         </div>
+      </div>
+
+      <!-- Mobile Table Swipe Hint -->
+      <div class="table-scroll-hint">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        Swipe table horizontally to view all scores &amp; actions
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
       </div>
 
       <!-- Evaluations Data Table -->
