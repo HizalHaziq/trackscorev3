@@ -12,6 +12,7 @@
 import { connectToDatabase, COLLECTION_NAME, buildMongoIdFilter } from './db.js';
 import { validateRole, ROLE_ASSESSOR, authErrorResponse } from './auth.js';
 import { recomputeScores, RUBRIC_VERSION, MAX_TOTAL_SCORE } from './rubric.js';
+import { recordStatusEvent } from './status-bus.js';
 
 // === CONFIGURATION ===
 // Paste your Make.com Webhook URL here
@@ -176,7 +177,7 @@ export const handler = async (event, context) => {
           deviceModel: cleanModel,
           packageName: packageName ? String(packageName).trim() : 'Standard Evaluation',
           assessorName: cleanAssessorName,
-          assessorId: cleanAssessorId, // Updated to store ID
+          assessorId: cleanAssessorId,
           assessmentDate: cleanDate,
           sectionAScore: recomputed.sectionAScore,
           sectionBScore: recomputed.sectionBScore,
@@ -185,7 +186,7 @@ export const handler = async (event, context) => {
           starsCount: recomputed.starsCount,
           ratingLabel: recomputed.ratingLabel,
           breakdown: recomputed.breakdown,
-          status: 'pending_review',
+          status: 'submitted',
           statusChangedAt: new Date().toISOString(),
           rejectionReason: null,
           resubmittedAt: new Date().toISOString()
@@ -204,15 +205,35 @@ export const handler = async (event, context) => {
           }
         };
 
+        const statusHistoryEntry = {
+          status: 'submitted',
+          timestamp: new Date().toISOString(),
+          actor: cleanAssessorId ? `${cleanAssessorName} (${cleanAssessorId})` : cleanAssessorName,
+          note: `Evaluation resubmitted after addressing notes. Score: ${recomputed.totalScore.toFixed(2)} pts.`
+        };
+
         if (connection.isMongoAtlas) {
           const collection = connection.db.collection(COLLECTION_NAME);
           await collection.updateOne(buildMongoIdFilter(resubmitRecordId), {
             $set: updateFields,
-            $push: { evaluationHistory: historyEntry }
+            $push: { 
+              evaluationHistory: historyEntry,
+              statusHistory: statusHistoryEntry
+            }
           });
         } else {
           await connection.updateEvaluation(resubmitRecordId, updateFields, historyEntry);
         }
+
+        recordStatusEvent({
+          evaluationId: resubmitRecordId,
+          companyName: cleanCompany,
+          deviceModel: cleanModel,
+          oldStatus: existingToResubmit.status,
+          newStatus: 'submitted',
+          actor: cleanAssessorName,
+          note: 'Evaluation resubmitted after corrections'
+        });
 
         // Trigger Webhook for Resubmission
         await syncToWebhook(updateFields, true);
@@ -223,7 +244,7 @@ export const handler = async (event, context) => {
           body: JSON.stringify({
             success: true,
             id: resubmitRecordId,
-            status: 'pending_review',
+            status: 'submitted',
             isResubmission: true,
             verifiedScores: {
               sectionAScore: recomputed.sectionAScore,
@@ -237,6 +258,60 @@ export const handler = async (event, context) => {
         };
       }
     }
+
+    // 5. Check for Pre-Existing Customer Registration or Scheduled Record for Reference Linking
+    const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let matchedRegistration = null;
+
+    if (connection.isMongoAtlas) {
+      const collection = connection.db.collection(COLLECTION_NAME);
+      const companyRegex = new RegExp(`^${escapeRegex(cleanCompany)}$`, 'i');
+      const modelRegex = new RegExp(`^${escapeRegex(cleanModel)}$`, 'i');
+
+      // 1st attempt: match companyName AND deviceModel
+      matchedRegistration = await collection.findOne({
+        companyName: { $regex: companyRegex },
+        deviceModel: { $regex: modelRegex },
+        status: { $in: ['registered', 'scheduled'] },
+        deletedAt: null
+      });
+
+      // 2nd attempt: match companyName where deviceModel was not provided/empty at registration time
+      if (!matchedRegistration) {
+        matchedRegistration = await collection.findOne({
+          companyName: { $regex: companyRegex },
+          $or: [
+            { deviceModel: { $exists: false } },
+            { deviceModel: null },
+            { deviceModel: '' },
+            { deviceModel: /^\s*$/ }
+          ],
+          status: { $in: ['registered', 'scheduled'] },
+          deletedAt: null
+        });
+      }
+    } else {
+      const all = await connection.getEvaluations();
+      // 1st attempt: match both company and device model
+      matchedRegistration = all.find(r => 
+        String(r.companyName || '').toLowerCase() === cleanCompany.toLowerCase() &&
+        String(r.deviceModel || '').toLowerCase() === cleanModel.toLowerCase() &&
+        ['registered', 'scheduled'].includes(r.status) &&
+        !r.deletedAt
+      );
+
+      // 2nd attempt: match company where device model was empty at registration
+      if (!matchedRegistration) {
+        matchedRegistration = all.find(r =>
+          String(r.companyName || '').toLowerCase() === cleanCompany.toLowerCase() &&
+          (!r.deviceModel || String(r.deviceModel).trim() === '') &&
+          ['registered', 'scheduled'].includes(r.status) &&
+          !r.deletedAt
+        );
+      }
+    }
+
+    const registrationReferenceId = matchedRegistration ? String(matchedRegistration._id) : null;
 
     // 5. Duplicate Submission Guard (For new submissions)
     if (connection.isMongoAtlas) {
@@ -282,14 +357,31 @@ export const handler = async (event, context) => {
       }
     }
 
+    const nowIso = payload.createdAt || new Date().toISOString();
+
     // 6. Build authoritative evaluation document
     const evaluationRecord = {
       rubricVersion: payload.rubricVersion || RUBRIC_VERSION,
       companyName: cleanCompany,
       deviceModel: cleanModel,
-      packageName: packageName ? String(packageName).trim() : 'Standard Evaluation',
+      packageName: packageName ? String(packageName).trim() : (matchedRegistration?.packageName || 'Standard Evaluation'),
+      package: payload.package || matchedRegistration?.package || 'package_1',
+      packageDetails: matchedRegistration?.packageDetails || null,
+      invoice: matchedRegistration?.invoice || null,
+      payment: matchedRegistration?.payment || {
+        status: matchedRegistration?.invoice && !matchedRegistration.invoice.isDraftStub ? 'invoiced' : 'unpaid',
+        amountReceived: 0,
+        paymentDate: null,
+        paymentMethod: null,
+        verifiedBy: null
+      },
+      contactPerson: matchedRegistration?.contactPerson || payload.contactPerson || null,
+      contactEmail: matchedRegistration?.contactEmail || payload.contactEmail || null,
+      contactPhone: matchedRegistration?.contactPhone || payload.contactPhone || null,
+      registrationReferenceId: registrationReferenceId,
+      linkedRegistrationId: registrationReferenceId,
       assessorName: cleanAssessorName,
-      assessorId: cleanAssessorId, // Added Assessor ID
+      assessorId: cleanAssessorId,
       assessmentDate: cleanDate,
       sectionAScore: recomputed.sectionAScore,
       sectionBScore: recomputed.sectionBScore,
@@ -299,15 +391,25 @@ export const handler = async (event, context) => {
       ratingLabel: recomputed.ratingLabel,
       maxPossibleScore: MAX_TOTAL_SCORE,
       breakdown: recomputed.breakdown,
-      status: 'pending_review',
-      statusChangedAt: payload.createdAt || new Date().toISOString(),
+      status: payload.status || 'pending_review',
+      statusChangedAt: nowIso,
       approvedBy: null,
       approvedAt: null,
       rejectedBy: null,
       rejectedAt: null,
       rejectionReason: null,
       evaluationHistory: [],
-      createdAt: payload.createdAt || new Date().toISOString()
+      statusHistory: [
+        {
+          status: payload.status || 'pending_review',
+          timestamp: nowIso,
+          actor: cleanAssessorId ? `${cleanAssessorName} (${cleanAssessorId})` : cleanAssessorName,
+          note: registrationReferenceId 
+            ? `Initial evaluation submitted and linked to pre-registered inspection (${registrationReferenceId}). Ready for managerial review.`
+            : 'Initial evaluation submitted by assessor. Ready for managerial review.'
+        }
+      ],
+      createdAt: nowIso
     };
 
     let insertedId;
@@ -319,11 +421,58 @@ export const handler = async (event, context) => {
       const result = await collection.insertOne(evaluationRecord);
       insertedId = result.insertedId;
       storageType = 'mongodb_atlas';
+
+      // If matched with a pre-registered customer record, link back with reference ID without overwriting
+      if (registrationReferenceId) {
+        await collection.updateOne(buildMongoIdFilter(registrationReferenceId), {
+          $set: {
+            linkedEvaluationId: String(insertedId),
+            evaluationReferenceId: String(insertedId)
+          },
+          $push: {
+            evaluationHistory: {
+              action: 'linked_to_evaluation',
+              timestamp: nowIso,
+              changedBy: cleanAssessorName,
+              note: `Formal evaluation submitted and referenced (Evaluation ID: ${insertedId})`
+            },
+            statusHistory: {
+              status: matchedRegistration.status,
+              timestamp: nowIso,
+              actor: cleanAssessorName,
+              note: `Formal evaluation submitted and linked (Evaluation ID: ${insertedId})`
+            }
+          }
+        });
+      }
     } else {
       const result = await connection.insertEvaluation(evaluationRecord);
       insertedId = result.insertedId;
       storageType = 'local_store';
+
+      if (registrationReferenceId) {
+        await connection.updateEvaluation(
+          registrationReferenceId,
+          { linkedEvaluationId: String(insertedId), evaluationReferenceId: String(insertedId) },
+          {
+            action: 'linked_to_evaluation',
+            timestamp: nowIso,
+            changedBy: cleanAssessorName,
+            note: `Formal evaluation submitted and referenced (Evaluation ID: ${insertedId})`
+          }
+        );
+      }
     }
+
+    recordStatusEvent({
+      evaluationId: String(insertedId),
+      companyName: cleanCompany,
+      deviceModel: cleanModel,
+      oldStatus: null,
+      newStatus: 'submitted',
+      actor: cleanAssessorName,
+      note: 'New evaluation submitted'
+    });
 
     // 8. Trigger Webhook for New Submission
     await syncToWebhook(evaluationRecord, false);
@@ -334,6 +483,8 @@ export const handler = async (event, context) => {
       body: JSON.stringify({
         success: true,
         id: insertedId,
+        linkedRegistrationId: registrationReferenceId,
+        registrationReferenceId: registrationReferenceId,
         status: evaluationRecord.status,
         storage: storageType,
         rubricVersion: evaluationRecord.rubricVersion,

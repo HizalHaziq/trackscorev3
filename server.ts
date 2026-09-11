@@ -19,6 +19,17 @@ import { handler as approveEvaluationHandler } from './netlify/functions/approve
 import { handler as lookupEvaluationHandler } from './netlify/functions/lookup-evaluation.js';
 import { handler as statusStreamHandler } from './netlify/functions/status-stream.js';
 import { handler as getNotificationsHandler } from './netlify/functions/get-notifications.js';
+import { handler as loginHandler } from './netlify/functions/login.js';
+import { handler as packagesHandler } from './netlify/functions/packages.js';
+import { handler as registerCustomerHandler } from './netlify/functions/register-customer.js';
+import { handler as scheduleAssessmentHandler } from './netlify/functions/schedule-assessment.js';
+import { handler as manageInvoiceHandler } from './netlify/functions/manage-invoice.js';
+import { handler as sendPreFinalHandler } from './netlify/functions/send-pre-final.js';
+import { handler as verifyPaymentHandler } from './netlify/functions/verify-payment.js';
+import { handler as issueCertificateHandler } from './netlify/functions/issue-certificate.js';
+import { handler as vendorInviteHandler } from './netlify/functions/vendor-invite.js';
+import { handler as vendorPortalDataHandler } from './netlify/functions/vendor-portal-data.js';
+import { handler as manageUsersHandler } from './netlify/functions/manage-users.js';
 import { statusEmitter, getRecentStatusEvents } from './netlify/functions/status-bus.js';
 
 const app = express();
@@ -107,6 +118,53 @@ app.all('/.netlify/functions/lookup-evaluation', (req: Request, res: Response) =
   return invokeNetlifyHandler(lookupEvaluationHandler, req, res);
 });
 
+// Authentication & Users
+app.all(['/.netlify/functions/login', '/api/login', '/.netlify/functions/vendor-login'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(loginHandler, req, res);
+});
+
+app.all(['/.netlify/functions/manage-users', '/api/manage-users'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(manageUsersHandler, req, res);
+});
+
+// Full Lifecycle Workflow Handlers
+app.all(['/.netlify/functions/packages', '/api/packages'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(packagesHandler, req, res);
+});
+
+app.all(['/.netlify/functions/register-customer', '/api/register-customer'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(registerCustomerHandler, req, res);
+});
+
+app.all(['/.netlify/functions/schedule-assessment', '/api/schedule-assessment'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(scheduleAssessmentHandler, req, res);
+});
+
+app.all(['/.netlify/functions/manage-invoice', '/api/manage-invoice'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(manageInvoiceHandler, req, res);
+});
+
+app.all(['/.netlify/functions/send-pre-final', '/api/send-pre-final'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(sendPreFinalHandler, req, res);
+});
+
+app.all(['/.netlify/functions/verify-payment', '/api/verify-payment'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(verifyPaymentHandler, req, res);
+});
+
+app.all(['/.netlify/functions/issue-certificate', '/api/issue-certificate', '/.netlify/functions/manage-certificate', '/api/manage-certificate'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(issueCertificateHandler, req, res);
+});
+
+// Vendor Portal & Invitations
+app.all(['/.netlify/functions/vendor-invite', '/api/vendor-invite'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(vendorInviteHandler, req, res);
+});
+
+app.all(['/.netlify/functions/vendor-portal-data', '/api/vendor-portal-data'], (req: Request, res: Response) => {
+  return invokeNetlifyHandler(vendorPortalDataHandler, req, res);
+});
+
 // SSE Status Stream (Feature 2)
 app.get(['/.netlify/functions/status-stream', '/api/status-stream'], (req: Request, res: Response) => {
   res.writeHead(200, {
@@ -190,6 +248,7 @@ app.all('/api/lookup-evaluation', (req: Request, res: Response) => {
 const isProduction = process.env.NODE_ENV === 'production';
 const rootDir = process.cwd();
 const distDir = path.join(rootDir, 'dist');
+const publicDir = path.join(rootDir, 'public');
 
 // Specific HTML route shortcuts
 app.get('/', (req: Request, res: Response) => {
@@ -207,7 +266,28 @@ app.get('/dashboard.html', (req: Request, res: Response) => {
   res.sendFile(target && path.resolve(target) ? target : path.join(rootDir, 'dashboard.html'));
 });
 
-// Serve assets
+app.get('/login', (req: Request, res: Response) => {
+  const target = isProduction && path.join(distDir, 'login.html');
+  res.sendFile(target && path.resolve(target) ? target : path.join(rootDir, 'login.html'));
+});
+
+app.get('/login.html', (req: Request, res: Response) => {
+  const target = isProduction && path.join(distDir, 'login.html');
+  res.sendFile(target && path.resolve(target) ? target : path.join(rootDir, 'login.html'));
+});
+
+app.get('/vendor-portal', (req: Request, res: Response) => {
+  const target = isProduction && path.join(distDir, 'vendor-portal.html');
+  res.sendFile(target && path.resolve(target) ? target : path.join(rootDir, 'vendor-portal.html'));
+});
+
+app.get('/vendor-portal.html', (req: Request, res: Response) => {
+  const target = isProduction && path.join(distDir, 'vendor-portal.html');
+  res.sendFile(target && path.resolve(target) ? target : path.join(rootDir, 'vendor-portal.html'));
+});
+
+// Serve assets (public, dist, and root)
+app.use(express.static(publicDir));
 app.use(express.static(rootDir));
 if (isProduction) {
   app.use(express.static(distDir));

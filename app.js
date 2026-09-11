@@ -1960,6 +1960,8 @@ function generatePdfReport() {
 
   const reportId = `TS-${Date.now().toString().slice(-6)}`;
   const dateFormatted = assessmentDate || new Date().toISOString().split("T")[0];
+  const certData = assessmentState.certificate || (assessmentState.metadata && assessmentState.metadata.certificate) || null;
+  const isCertSigned = Boolean(certData && certData.signedDate);
 
   // Pristine single-page A4 format designed to fit 100% without overflowing or splitting
   const rawHtmlTemplate = `
@@ -2001,6 +2003,14 @@ function generatePdfReport() {
             <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #64748B; text-transform: uppercase;">Assessor ID:</td>
             <td style="padding: 2.5px 5px; font-size: 10.5px; font-weight: 700; color: #0284C7; font-family: monospace;">${escapeHtml(assessorId || "N/A")}</td>
           </tr>
+          ${isCertSigned ? `
+          <tr>
+            <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #166534; text-transform: uppercase;">Certificate No:</td>
+            <td style="padding: 2.5px 5px; font-size: 10.5px; font-weight: 800; color: #166534; font-family: monospace;">${escapeHtml(certData.certificateNumber || "N/A")}</td>
+            <td style="padding: 2.5px 5px; font-size: 8.5px; font-weight: 700; color: #166534; text-transform: uppercase;">Endorsement:</td>
+            <td style="padding: 2.5px 5px; font-size: 10.5px; font-weight: 700; color: #166534;">DGO Signed (${new Date(certData.signedDate).toLocaleDateString('en-MY')})</td>
+          </tr>
+          ` : ''}
         </table>
       </div>
 
@@ -2092,6 +2102,27 @@ function generatePdfReport() {
       <div style="border-top: 1px solid #E2E8F0; padding-top: 6px; font-size: 8px; color: #64748B;">
         <table style="width: 100%; border-collapse: collapse;">
           <tr>
+            ${isCertSigned ? `
+            <td style="width: 38%; vertical-align: top;">
+              <div style="font-weight: 700; color: #1A1A1A; margin-bottom: 1px;">TrackScore Digital Assessor Matrix</div>
+              <div>Certified by Malaysian Institute of Road Safety Research (MIROS)</div>
+              <div style="margin-top: 1px;">Generated on ${new Date().toLocaleString()}</div>
+              <div style="margin-top: 2px; font-weight: 700; color: #166534; font-size: 8px;">Certificate Ref: ${escapeHtml(certData.certificateNumber || '')}</div>
+            </td>
+            <td style="width: 31%; vertical-align: top; text-align: right;">
+              <div style="display: inline-block; text-align: center; border-top: 1px solid #94A3B8; padding-top: 2px; min-width: 130px;">
+                <div style="font-weight: 700; color: #1A1A1A; font-size: 8.5px;">${escapeHtml(assessorName)}</div>
+                <div style="font-size: 7.5px; color: #64748B;">Authorized Assessor Sign-Off</div>
+              </div>
+            </td>
+            <td style="width: 31%; vertical-align: top; text-align: right; padding-left: 8px;">
+              <div style="display: inline-block; text-align: center; border-top: 1.5px solid #166534; padding-top: 2px; min-width: 140px;">
+                <div style="font-weight: 800; color: #166534; font-size: 8.5px;">${escapeHtml(certData.signedBy || 'Director General')}</div>
+                <div style="font-size: 7.5px; color: #15803D; font-weight: 700;">Director General Office (DGO)</div>
+                <div style="font-size: 7px; color: #64748B;">Signed: ${new Date(certData.signedDate).toLocaleDateString('en-MY')}</div>
+              </div>
+            </td>
+            ` : `
             <td style="width: 55%; vertical-align: top;">
               <div style="font-weight: 700; color: #1A1A1A; margin-bottom: 1px;">TrackScore Digital Assessor Matrix</div>
               <div>Certified by Malaysian Institute of Road Safety Research (MIROS)</div>
@@ -2103,6 +2134,7 @@ function generatePdfReport() {
                 <div style="font-size: 7.5px; color: #64748B;">Authorized Assessor Sign-Off</div>
               </div>
             </td>
+            `}
           </tr>
         </table>
       </div>

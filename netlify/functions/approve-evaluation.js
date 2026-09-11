@@ -62,19 +62,21 @@ export const handler = async (event, context) => {
       };
     }
 
-    // Determine requested action: 'approved' | 'rejected'
+    // Determine requested action: 'approved' | 'completed' | 'rejected' | or specific lifecycle status
     const rawAction = String(payload.action || payload.status || '').trim().toLowerCase();
     let targetStatus = null;
-    if (rawAction === 'approve' || rawAction === 'approved') {
-      targetStatus = 'approved';
+    if (rawAction === 'approve' || rawAction === 'approved' || rawAction === 'completed') {
+      targetStatus = payload.targetStatus || 'completed';
     } else if (rawAction === 'reject' || rawAction === 'rejected') {
       targetStatus = 'rejected';
+    } else if (['registered', 'scheduled', 'submitted', 'pending_review', 'pre_final_sent', 'payment_confirmed', 'certificate_issued', 'completed'].includes(rawAction)) {
+      targetStatus = rawAction;
     } else {
       return {
         statusCode: 400,
         headers,
         body: JSON.stringify({
-          error: `Invalid status or action "${rawAction}". Permitted values: "approved" or "rejected".`
+          error: `Invalid status or action "${rawAction}". Permitted values: "approved", "rejected", or a valid lifecycle stage.`
         })
       };
     }
@@ -93,7 +95,7 @@ export const handler = async (event, context) => {
 
     const connection = await connectToDatabase();
     const nowIso = new Date().toISOString();
-    const managerIdentifier = (payload.managerName || payload.approvedBy || payload.rejectedBy || 'Manager').trim();
+    const managerIdentifier = (payload.managerName || payload.approvedBy || payload.rejectedBy || roleCheck.user?.name || 'Operations Manager').trim();
 
     // Fetch current document
     let existing = null;
@@ -116,13 +118,28 @@ export const handler = async (event, context) => {
       };
     }
 
+    // Enforce lifecycle rule: rejection is only reachable from pending_review or pre_final_sent
+    if (targetStatus === 'rejected') {
+      const current = (existing.status || 'pending_review').toLowerCase();
+      if (current !== 'pending_review' && current !== 'pre_final_sent') {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({
+            error: `Rejection is only permitted for evaluations in "pending_review" or "pre_final_sent" status (current status: "${existing.status || 'pending_review'}").`
+          })
+        };
+      }
+    }
+
     // Build update document and audit history
     let updateFields = {};
     let historyEntry = {};
+    let statusHistoryEntry = {};
 
-    if (targetStatus === 'approved') {
+    if (targetStatus !== 'rejected') {
       updateFields = {
-        status: 'approved',
+        status: targetStatus,
         approvedBy: managerIdentifier,
         approvedAt: nowIso,
         statusChangedAt: nowIso,
@@ -132,10 +149,19 @@ export const handler = async (event, context) => {
       };
 
       historyEntry = {
-        action: 'approved',
+        action: targetStatus,
         timestamp: nowIso,
         changedBy: managerIdentifier,
-        note: payload.note || 'Evaluation approved and locked by manager'
+        note: payload.note || `Evaluation status moved to ${targetStatus} by manager`
+      };
+
+      statusHistoryEntry = {
+        status: targetStatus,
+        changedAt: nowIso,
+        changedBy: managerIdentifier,
+        timestamp: nowIso,
+        actor: managerIdentifier,
+        note: payload.note || `Evaluation status transitioned to ${targetStatus}`
       };
     } else {
       updateFields = {
@@ -153,16 +179,29 @@ export const handler = async (event, context) => {
         rejectionReason,
         note: `Evaluation rejected: ${rejectionReason}`
       };
+
+      statusHistoryEntry = {
+        status: 'rejected',
+        changedAt: nowIso,
+        changedBy: managerIdentifier,
+        timestamp: nowIso,
+        actor: managerIdentifier,
+        reason: rejectionReason,
+        note: `Evaluation returned for corrections: ${rejectionReason}`
+      };
     }
 
     // Apply update to persistent storage
     if (connection.isMongoAtlas) {
       await collection.updateOne(filter, {
         $set: updateFields,
-        $push: { evaluationHistory: historyEntry }
+        $push: { 
+          evaluationHistory: historyEntry,
+          statusHistory: statusHistoryEntry
+        }
       });
     } else {
-      await connection.updateEvaluation(id, updateFields, historyEntry);
+      await connection.updateEvaluation(id, updateFields, historyEntry, statusHistoryEntry);
     }
 
     // Broadcast status change event for SSE streams and polling listeners

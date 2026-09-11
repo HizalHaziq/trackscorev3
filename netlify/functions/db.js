@@ -7,6 +7,7 @@
 import { MongoClient, ObjectId } from 'mongodb';
 import fs from 'fs';
 import path from 'path';
+import bcrypt from 'bcryptjs';
 
 let cachedClient = null;
 let cachedDb = null;
@@ -18,16 +19,23 @@ const ATLAS_RETRY_COOLDOWN_MS = 60000; // 60s cooldown before retrying Atlas
 
 export const DB_NAME = 'trackscore';
 export const COLLECTION_NAME = 'evaluations';
+export const COLLECTION_USERS = 'users';
+export const COLLECTION_VENDORS = 'vendors';
+
 const FALLBACK_DIR = path.join(process.cwd(), '.data');
 const FALLBACK_FILE = path.join(FALLBACK_DIR, 'evaluations.json');
+const USERS_FILE = path.join(FALLBACK_DIR, 'users.json');
+const VENDORS_FILE = path.join(FALLBACK_DIR, 'vendors.json');
 
-// Ensure fallback directory exists
+// Ensure fallback store & seed initial accounts if empty
 function ensureFallbackStore() {
   if (!fs.existsSync(FALLBACK_DIR)) {
     fs.mkdirSync(FALLBACK_DIR, { recursive: true });
   }
+
+  // 1. Evaluations Store
   if (!fs.existsSync(FALLBACK_FILE)) {
-    // Seed with two sample realistic evaluations for immediate dashboard review
+    // Seed with sample realistic evaluations for immediate review
     const sampleData = [
       {
         _id: 'seed-eval-001',
@@ -35,7 +43,9 @@ function ensureFallbackStore() {
         companyName: 'Apex Telematics Sdn Bhd',
         deviceModel: 'FleetGuard Pro 400',
         packageName: 'Enterprise Fleet Tracker',
+        package: 'package_2',
         assessorName: 'Ts. Mohd Farhan (AS-8812)',
+        assessorId: 'AS-8812',
         assessmentDate: '2026-09-06',
         sectionAScore: 30.5,
         sectionBScore: 8.75,
@@ -78,10 +88,47 @@ function ensureFallbackStore() {
           { section: 'B', id: 'immobilizer', name: 'Immobilizer', selectedOption: 'Available', points: 1.0 },
           { section: 'B', id: 'tampered_alert', name: 'Tamper Detection & Power Disconnect Alert', selectedOption: 'SMS', points: 1.25 }
         ],
-        status: 'approved',
+        status: 'completed',
         approvedBy: 'Lead Manager',
         approvedAt: '2026-09-06T06:00:00.000Z',
         statusChangedAt: '2026-09-06T06:00:00.000Z',
+        packageDetails: {
+          packageId: 'package_2',
+          price: 6000,
+          validityYears: 3,
+          freeReassessments: 2
+        },
+        invoice: {
+          invoiceNumber: 'INV-2026-0041',
+          amount: 6000,
+          issuedDate: '2026-09-05T08:00:00.000Z',
+          dueDate: '2026-09-20'
+        },
+        payment: {
+          status: 'paid',
+          amountReceived: 6000,
+          paymentDate: '2026-09-06T04:30:00.000Z',
+          paymentMethod: 'Bank Transfer / DuitNow',
+          verifiedBy: 'Finance & Compliance Team'
+        },
+        certificate: {
+          certificateNumber: 'TS-CERT-2026-0041',
+          preparedDate: '2026-09-06T05:00:00.000Z',
+          printedDate: '2026-09-06T05:15:00.000Z',
+          signedBy: 'Director General Office (DGO)',
+          signedDate: '2026-09-06T05:30:00.000Z',
+          sentToCustomerDate: '2026-09-06T06:00:00.000Z'
+        },
+        statusHistory: [
+          { status: 'registered', timestamp: '2026-09-01T09:00:00.000Z', actor: 'Operations Manager', note: 'Customer registered for Package 2.' },
+          { status: 'scheduled', timestamp: '2026-09-02T10:00:00.000Z', actor: 'Operations Manager', note: 'Assessment session scheduled for 2026-09-06.' },
+          { status: 'submitted', timestamp: '2026-09-06T04:00:00.000Z', actor: 'Ts. Mohd Farhan (AS-8812)', note: 'Evaluation submitted for manager review.' },
+          { status: 'pending_review', timestamp: '2026-09-06T04:10:00.000Z', actor: 'Operations Manager', note: 'Score audited and confirmed at 39.25 pts (5 Stars).' },
+          { status: 'pre_final_sent', timestamp: '2026-09-06T04:15:00.000Z', actor: 'Operations Manager', note: 'Preliminary result dispatched to Apex Telematics.' },
+          { status: 'payment_confirmed', timestamp: '2026-09-06T04:30:00.000Z', actor: 'Lead Manager', note: 'Full RM 6,000 payment received and verified.' },
+          { status: 'certificate_issued', timestamp: '2026-09-06T05:30:00.000Z', actor: 'Lead Manager', note: 'Certificate TS-CERT-2026-0041 endorsed by DGO.' },
+          { status: 'completed', timestamp: '2026-09-06T06:00:00.000Z', actor: 'Lead Manager', note: 'Final certificate package delivered to vendor.' }
+        ],
         evaluationHistory: [
           {
             action: 'approved',
@@ -98,6 +145,7 @@ function ensureFallbackStore() {
         companyName: 'OmniTrack Mobility Solutions',
         deviceModel: 'OT-Lite 200 GPS',
         packageName: 'Basic Commercial Standard',
+        package: 'package_1',
         assessorName: 'Engr. Sarah Wong (AS-7741)',
         assessmentDate: '2026-09-03',
         sectionAScore: 24.25,
@@ -143,11 +191,192 @@ function ensureFallbackStore() {
         ],
         status: 'pending_review',
         statusChangedAt: '2026-09-03T04:56:17.982Z',
+        statusHistory: [
+          { status: 'submitted', timestamp: '2026-09-03T04:56:17.982Z', actor: 'Engr. Sarah Wong (AS-7741)', note: 'Initial evaluation submitted.' }
+        ],
         evaluationHistory: [],
         createdAt: '2026-09-03T04:56:17.982Z'
       }
     ];
     fs.writeFileSync(FALLBACK_FILE, JSON.stringify(sampleData, null, 2), 'utf-8');
+  }
+
+  // 2. Users Store (Manager & Assessor Accounts)
+  const salt = bcrypt.genSaltSync(10);
+  const initialUsers = [
+    {
+      _id: 'user_manager_001',
+      email: 'manager@trackscore.my',
+      passwordHash: bcrypt.hashSync('Manager2026!', salt),
+      name: 'Lead Operations Manager',
+      role: 'manager',
+      createdAt: new Date().toISOString()
+    },
+    {
+      _id: 'user_manager_002',
+      email: 'admin@trackscore.my',
+      passwordHash: bcrypt.hashSync('Manager@2026!', salt),
+      name: 'System Admin Manager',
+      role: 'manager',
+      createdAt: new Date().toISOString()
+    },
+    {
+      _id: 'user_assessor_001',
+      email: 'farhan@trackscore.my',
+      passwordHash: bcrypt.hashSync('Assessor2026!', salt),
+      name: 'Ts. Mohd Farhan',
+      role: 'assessor',
+      assessorId: 'AS-8812',
+      createdAt: new Date().toISOString()
+    },
+    {
+      _id: 'user_assessor_002',
+      email: 'assessor@trackscore.my',
+      passwordHash: bcrypt.hashSync('Assessor@2026!', salt),
+      name: 'Certified Assessor',
+      role: 'assessor',
+      assessorId: 'AS-9001',
+      createdAt: new Date().toISOString()
+    }
+  ];
+
+  if (!fs.existsSync(USERS_FILE)) {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(initialUsers, null, 2), 'utf-8');
+  } else {
+    try {
+      const existing = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8') || '[]');
+      let mod = false;
+      for (const u of initialUsers) {
+        if (!existing.some(x => x.email.toLowerCase() === u.email.toLowerCase())) {
+          existing.push(u);
+          mod = true;
+        }
+      }
+      if (mod) fs.writeFileSync(USERS_FILE, JSON.stringify(existing, null, 2), 'utf-8');
+    } catch {
+      fs.writeFileSync(USERS_FILE, JSON.stringify(initialUsers, null, 2), 'utf-8');
+    }
+  }
+
+  // 3. Vendors Store (External Client Accounts)
+  const initialVendors = [
+    {
+      _id: 'vendor_001',
+      companyName: 'Apex Telematics Sdn Bhd',
+      contactEmail: 'vendor@apex.com',
+      contactPhone: '+603-8888 1234',
+      passwordHash: bcrypt.hashSync('Vendor2026!', salt),
+      linkedRegistrationIds: ['seed-eval-001'],
+      isActive: true,
+      createdAt: new Date().toISOString()
+    },
+    {
+      _id: 'vendor_002',
+      companyName: 'Fleetmatics Global Ltd',
+      contactEmail: 'vendor@fleetmatics.com',
+      contactPhone: '+603-7777 9999',
+      passwordHash: bcrypt.hashSync('Vendor@2026!', salt),
+      linkedRegistrationIds: [],
+      isActive: true,
+      createdAt: new Date().toISOString()
+    }
+  ];
+
+  if (!fs.existsSync(VENDORS_FILE)) {
+    fs.writeFileSync(VENDORS_FILE, JSON.stringify(initialVendors, null, 2), 'utf-8');
+  } else {
+    try {
+      const existing = JSON.parse(fs.readFileSync(VENDORS_FILE, 'utf-8') || '[]');
+      let mod = false;
+      for (const v of initialVendors) {
+        if (!existing.some(x => x.contactEmail.toLowerCase() === v.contactEmail.toLowerCase())) {
+          existing.push(v);
+          mod = true;
+        }
+      }
+      if (mod) fs.writeFileSync(VENDORS_FILE, JSON.stringify(existing, null, 2), 'utf-8');
+    } catch {
+      fs.writeFileSync(VENDORS_FILE, JSON.stringify(initialVendors, null, 2), 'utf-8');
+    }
+  }
+}
+
+export async function seedAtlasUsersAndVendors(db) {
+  if (!db) return;
+  try {
+    const salt = bcrypt.genSaltSync(10);
+    const initialUsers = [
+      {
+        email: 'manager@trackscore.my',
+        passwordHash: bcrypt.hashSync('Manager2026!', salt),
+        name: 'Lead Operations Manager',
+        role: 'manager',
+        createdAt: new Date().toISOString()
+      },
+      {
+        email: 'admin@trackscore.my',
+        passwordHash: bcrypt.hashSync('Manager@2026!', salt),
+        name: 'System Admin Manager',
+        role: 'manager',
+        createdAt: new Date().toISOString()
+      },
+      {
+        email: 'farhan@trackscore.my',
+        passwordHash: bcrypt.hashSync('Assessor2026!', salt),
+        name: 'Ts. Mohd Farhan',
+        role: 'assessor',
+        assessorId: 'AS-8812',
+        createdAt: new Date().toISOString()
+      },
+      {
+        email: 'assessor@trackscore.my',
+        passwordHash: bcrypt.hashSync('Assessor@2026!', salt),
+        name: 'Certified Assessor',
+        role: 'assessor',
+        assessorId: 'AS-9001',
+        createdAt: new Date().toISOString()
+      }
+    ];
+
+    const initialVendors = [
+      {
+        companyName: 'Apex Telematics Sdn Bhd',
+        contactEmail: 'vendor@apex.com',
+        contactPhone: '+603-8888 1234',
+        passwordHash: bcrypt.hashSync('Vendor2026!', salt),
+        linkedRegistrationIds: ['seed-eval-001'],
+        isActive: true,
+        createdAt: new Date().toISOString()
+      },
+      {
+        companyName: 'Fleetmatics Global Ltd',
+        contactEmail: 'vendor@fleetmatics.com',
+        contactPhone: '+603-7777 9999',
+        passwordHash: bcrypt.hashSync('Vendor@2026!', salt),
+        linkedRegistrationIds: [],
+        isActive: true,
+        createdAt: new Date().toISOString()
+      }
+    ];
+
+    const usersCol = db.collection(COLLECTION_USERS);
+    const vendorsCol = db.collection(COLLECTION_VENDORS);
+
+    for (const u of initialUsers) {
+      const existing = await usersCol.findOne({ email: u.email });
+      if (!existing) {
+        await usersCol.insertOne(u);
+      }
+    }
+
+    for (const v of initialVendors) {
+      const existing = await vendorsCol.findOne({ contactEmail: v.contactEmail });
+      if (!existing) {
+        await vendorsCol.insertOne(v);
+      }
+    }
+  } catch (err) {
+    console.warn('[SEED-ATLAS-WARN]', err.message);
   }
 }
 
@@ -163,18 +392,125 @@ export function buildMongoIdFilter(id) {
 }
 
 let indexesEnsured = false;
+let migrationExecuted = false;
+
+export async function runLifecycleMigration(db, isMongoAtlas) {
+  if (migrationExecuted) return;
+  migrationExecuted = true;
+
+  try {
+    const nowIso = new Date().toISOString();
+    if (isMongoAtlas && db) {
+      const col = db.collection(COLLECTION_NAME);
+      const approvedDocs = await col.find({ status: 'approved' }).toArray();
+      if (approvedDocs.length > 0) {
+        console.log(`[LIFECYCLE-MIGRATION] Found ${approvedDocs.length} legacy "approved" records. Starting migration to "completed"...`);
+        for (const doc of approvedDocs) {
+          const statusHistory = Array.isArray(doc.statusHistory) ? [...doc.statusHistory] : [];
+          if (statusHistory.length === 0 && doc.createdAt) {
+            statusHistory.push({
+              status: 'submitted',
+              timestamp: doc.createdAt,
+              actor: doc.assessorName || 'Assessor',
+              note: 'Initial evaluation submitted.'
+            });
+          }
+          statusHistory.push({
+            status: 'completed',
+            timestamp: doc.approvedAt || nowIso,
+            actor: doc.approvedBy || 'System Migration',
+            note: 'One-time migration: Transitioned legacy "approved" status to "completed" in full administrative lifecycle.'
+          });
+
+          const certificate = doc.certificate || {
+            certificateNumber: 'TS-CERT-' + (doc.assessmentDate ? doc.assessmentDate.replace(/-/g, '') : '2026') + '-' + Math.floor(1000 + Math.random() * 9000),
+            preparedDate: doc.approvedAt || doc.createdAt,
+            printedDate: doc.approvedAt || doc.createdAt,
+            signedBy: 'Director General Office (DGO)',
+            signedDate: doc.approvedAt || doc.createdAt,
+            sentToCustomerDate: doc.approvedAt || doc.createdAt
+          };
+
+          await col.updateOne(
+            { _id: doc._id },
+            {
+              $set: {
+                status: 'completed',
+                package: doc.package || 'package_1',
+                certificate,
+                statusHistory,
+                migratedFromApprovedAt: nowIso
+              }
+            }
+          );
+          console.log(`[LIFECYCLE-MIGRATION] Migrated evaluation ID: ${doc._id} (${doc.companyName || 'Unknown'}) to "completed".`);
+        }
+      }
+    } else {
+      // Local fallback migration
+      ensureFallbackStore();
+      const data = JSON.parse(fs.readFileSync(FALLBACK_FILE, 'utf-8'));
+      let modified = false;
+      data.forEach(doc => {
+        if (!Array.isArray(doc.statusHistory)) {
+          doc.statusHistory = [];
+          if (doc.createdAt) {
+            doc.statusHistory.push({
+              status: 'submitted',
+              timestamp: doc.createdAt,
+              actor: doc.assessorName || 'Assessor',
+              note: 'Initial evaluation submitted.'
+            });
+          }
+        }
+        if (doc.status === 'approved') {
+          doc.status = 'completed';
+          doc.package = doc.package || 'package_1';
+          if (!doc.certificate) {
+            doc.certificate = {
+              certificateNumber: 'TS-CERT-' + (doc.assessmentDate ? doc.assessmentDate.replace(/-/g, '') : '2026') + '-' + Math.floor(1000 + Math.random() * 9000),
+              preparedDate: doc.approvedAt || doc.createdAt,
+              printedDate: doc.approvedAt || doc.createdAt,
+              signedBy: 'Director General Office (DGO)',
+              signedDate: doc.approvedAt || doc.createdAt,
+              sentToCustomerDate: doc.approvedAt || doc.createdAt
+            };
+          }
+          doc.statusHistory.push({
+            status: 'completed',
+            timestamp: doc.approvedAt || nowIso,
+            actor: doc.approvedBy || 'System Migration',
+            note: 'One-time migration: Transitioned legacy "approved" status to "completed" in full administrative lifecycle.'
+          });
+          doc.migratedFromApprovedAt = nowIso;
+          modified = true;
+          console.log(`[LIFECYCLE-MIGRATION] Migrated evaluation ID: ${doc._id} (${doc.companyName || 'Unknown'}) to "completed".`);
+        }
+      });
+      if (modified) {
+        fs.writeFileSync(FALLBACK_FILE, JSON.stringify(data, null, 2), 'utf-8');
+      }
+    }
+  } catch (err) {
+    console.error('[LIFECYCLE-MIGRATION-ERROR]', err);
+  }
+}
 
 export async function ensureDatabaseIndexes(db) {
   if (indexesEnsured || !db) return;
   try {
     const col = db.collection(COLLECTION_NAME);
+    const usersCol = db.collection(COLLECTION_USERS);
+    const vendorsCol = db.collection(COLLECTION_VENDORS);
     await Promise.allSettled([
       col.createIndex({ status: 1 }, { background: true }),
       col.createIndex({ assessorId: 1 }, { background: true }),
       col.createIndex({ createdAt: -1 }, { background: true }),
       col.createIndex({ statusChangedAt: -1 }, { background: true }),
       col.createIndex({ companyName: 1, deviceModel: 1, assessorName: 1, assessmentDate: 1 }, { background: true }),
-      col.createIndex({ deletedAt: 1, status: 1, createdAt: -1 }, { background: true })
+      col.createIndex({ deletedAt: 1, status: 1, createdAt: -1 }, { background: true }),
+      usersCol.createIndex({ email: 1 }, { unique: true, background: true }),
+      vendorsCol.createIndex({ contactEmail: 1 }, { unique: true, background: true })
     ]);
     indexesEnsured = true;
   } catch (err) {
@@ -194,7 +530,8 @@ export async function connectToDatabase() {
     // Circuit breaker: If Atlas failed recently, bypass the 2.5s connection wait
     // and immediately serve via local fallback store with zero latency
     if (now - lastAtlasAttemptTime < ATLAS_RETRY_COOLDOWN_MS) {
-      return createFallbackStoreInterface(true);
+      const fallback = createFallbackStoreInterface(true);
+      return fallback;
     }
 
     lastAtlasAttemptTime = now;
@@ -238,7 +575,8 @@ export async function connectToDatabase() {
     }
   }
 
-  return createFallbackStoreInterface(!!uri);
+  const fallback = createFallbackStoreInterface(!!uri);
+  return fallback;
 }
 
 export async function closeDatabaseConnection() {
@@ -287,7 +625,7 @@ function createFallbackStoreInterface(hasAtlasUri = false) {
       const records = includeDeleted ? data : data.filter(d => !d.deletedAt);
       return records.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     },
-    async updateEvaluation(id, updateDoc, historyEntry = null) {
+    async updateEvaluation(id, updateDoc, historyEntry = null, statusHistoryEntry = null) {
       ensureFallbackStore();
       const data = JSON.parse(fs.readFileSync(FALLBACK_FILE, 'utf-8'));
       const idx = data.findIndex(d => String(d._id) === String(id));
@@ -303,10 +641,25 @@ function createFallbackStoreInterface(hasAtlasUri = false) {
         history.push(historyEntry);
       }
 
+      const statusHist = Array.isArray(data[idx].statusHistory)
+        ? [...data[idx].statusHistory]
+        : [];
+
+      if (statusHistoryEntry) {
+        statusHist.push(statusHistoryEntry);
+      } else if (updateDoc.status && updateDoc.status !== data[idx].status) {
+        statusHist.push({
+          status: updateDoc.status,
+          changedAt: new Date().toISOString(),
+          changedBy: updateDoc.approvedBy || updateDoc.rejectedBy || 'System'
+        });
+      }
+
       data[idx] = {
         ...data[idx],
         ...updateDoc,
         evaluationHistory: history,
+        statusHistory: statusHist,
         updatedAt: new Date().toISOString()
       };
       fs.writeFileSync(FALLBACK_FILE, JSON.stringify(data, null, 2), 'utf-8');
@@ -352,13 +705,155 @@ function createFallbackStoreInterface(hasAtlasUri = false) {
         const dDate = String(d.assessmentDate || d.createdAt || '').trim().substring(0, 10);
         return dComp === comp && dModel === model && dAssessor === assessor && dDate === date;
       });
+    },
+
+    // User Operations
+    async getUserByEmail(email) {
+      ensureFallbackStore();
+      const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+      const clean = String(email || '').trim().toLowerCase();
+      return users.find(u => String(u.email || '').trim().toLowerCase() === clean) || null;
+    },
+    async getUserById(id) {
+      ensureFallbackStore();
+      const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+      return users.find(u => String(u._id) === String(id)) || null;
+    },
+    async createUser(userDoc) {
+      ensureFallbackStore();
+      const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+      const newUser = {
+        _id: 'user_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        ...userDoc,
+        createdAt: new Date().toISOString()
+      };
+      users.push(newUser);
+      fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
+      return newUser;
+    },
+    async getUsers() {
+      ensureFallbackStore();
+      const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+      return users.map(({ passwordHash, ...safe }) => safe);
+    },
+
+    // Vendor Operations
+    async getVendorByEmail(email) {
+      ensureFallbackStore();
+      const vendors = JSON.parse(fs.readFileSync(VENDORS_FILE, 'utf-8'));
+      const clean = String(email || '').trim().toLowerCase();
+      return vendors.find(v => String(v.contactEmail || '').trim().toLowerCase() === clean) || null;
+    },
+    async getVendorById(id) {
+      ensureFallbackStore();
+      const vendors = JSON.parse(fs.readFileSync(VENDORS_FILE, 'utf-8'));
+      return vendors.find(v => String(v._id) === String(id)) || null;
+    },
+    async createVendor(vendorDoc) {
+      ensureFallbackStore();
+      const vendors = JSON.parse(fs.readFileSync(VENDORS_FILE, 'utf-8'));
+      const newVendor = {
+        _id: 'vendor_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        ...vendorDoc,
+        createdAt: new Date().toISOString()
+      };
+      vendors.push(newVendor);
+      fs.writeFileSync(VENDORS_FILE, JSON.stringify(vendors, null, 2), 'utf-8');
+      return newVendor;
+    },
+    async updateVendor(id, updateDoc) {
+      ensureFallbackStore();
+      const vendors = JSON.parse(fs.readFileSync(VENDORS_FILE, 'utf-8'));
+      const idx = vendors.findIndex(v => String(v._id) === String(id));
+      if (idx === -1) return null;
+      vendors[idx] = {
+        ...vendors[idx],
+        ...updateDoc,
+        updatedAt: new Date().toISOString()
+      };
+      fs.writeFileSync(VENDORS_FILE, JSON.stringify(vendors, null, 2), 'utf-8');
+      return vendors[idx];
+    },
+    async getVendors() {
+      ensureFallbackStore();
+      const vendors = JSON.parse(fs.readFileSync(VENDORS_FILE, 'utf-8'));
+      return vendors.map(({ passwordHash, ...safe }) => safe);
     }
   };
+}
+
+// Universal abstraction helpers for User & Vendor entities
+export async function findUserByEmail(connection, email) {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (connection.isMongoAtlas) {
+    return connection.db.collection(COLLECTION_USERS).findOne({ email: cleanEmail });
+  }
+  return connection.getUserByEmail(cleanEmail);
+}
+
+export async function findVendorByEmail(connection, email) {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (connection.isMongoAtlas) {
+    return connection.db.collection(COLLECTION_VENDORS).findOne({ contactEmail: cleanEmail });
+  }
+  return connection.getVendorByEmail(cleanEmail);
+}
+
+export async function findVendorById(connection, id) {
+  if (connection.isMongoAtlas) {
+    return connection.db.collection(COLLECTION_VENDORS).findOne(buildMongoIdFilter(id));
+  }
+  return connection.getVendorById(id);
+}
+
+export async function createVendorRecord(connection, vendorDoc) {
+  if (connection.isMongoAtlas) {
+    const res = await connection.db.collection(COLLECTION_VENDORS).insertOne({
+      ...vendorDoc,
+      createdAt: new Date().toISOString()
+    });
+    return { _id: res.insertedId, ...vendorDoc };
+  }
+  return connection.createVendor(vendorDoc);
+}
+
+export async function updateVendorRecord(connection, id, updates) {
+  if (connection.isMongoAtlas) {
+    await connection.db.collection(COLLECTION_VENDORS).updateOne(
+      buildMongoIdFilter(id),
+      { $set: { ...updates, updatedAt: new Date().toISOString() } }
+    );
+    return findVendorById(connection, id);
+  }
+  return connection.updateVendor(id, updates);
+}
+
+export async function listVendors(connection) {
+  if (connection.isMongoAtlas) {
+    return connection.db.collection(COLLECTION_VENDORS).find({}, { projection: { passwordHash: 0 } }).toArray();
+  }
+  return connection.getVendors();
+}
+
+export async function listUsers(connection) {
+  if (connection.isMongoAtlas) {
+    return connection.db.collection(COLLECTION_USERS).find({}, { projection: { passwordHash: 0 } }).toArray();
+  }
+  return connection.getUsers();
 }
 
 export default {
   connectToDatabase,
   buildMongoIdFilter,
+  findUserByEmail,
+  findVendorByEmail,
+  findVendorById,
+  createVendorRecord,
+  updateVendorRecord,
+  listVendors,
+  listUsers,
   DB_NAME,
-  COLLECTION_NAME
+  COLLECTION_NAME,
+  COLLECTION_USERS,
+  COLLECTION_VENDORS
 };

@@ -84,15 +84,63 @@ export const handler = async (event, context) => {
       };
     }
 
-    // 3. Immutability Enforcement: Approved evaluations are locked and cannot be edited
-    if (existingRecord.status === 'approved') {
+    // 3. Immutability Enforcement: Approved/Completed evaluations are locked and cannot be edited
+    if (existingRecord.status === 'approved' || existingRecord.status === 'completed') {
       return {
         statusCode: 403,
         headers,
         body: JSON.stringify({
-          error: 'Approved evaluations are locked and cannot be edited. Contact a manager to reject and resubmit if a correction is needed.'
+          error: 'Completed/Approved evaluations are locked and cannot be edited. Contact a manager to reject and resubmit if a correction is needed.'
         })
       };
+    }
+
+    const VALID_LIFECYCLE_STATUSES = [
+      'registered',
+      'scheduled',
+      'submitted',
+      'pending_review',
+      'pre_final_sent',
+      'payment_confirmed',
+      'certificate_issued',
+      'completed',
+      'rejected'
+    ];
+
+    const updateFields = {};
+    let statusHistoryEntry = null;
+    if (payload.status !== undefined && payload.status !== null && String(payload.status).trim() !== '') {
+      const targetStatus = String(payload.status).trim().toLowerCase();
+      if (!VALID_LIFECYCLE_STATUSES.includes(targetStatus)) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({
+            error: `Invalid status "${payload.status}". Valid statuses: ${VALID_LIFECYCLE_STATUSES.join(', ')}`
+          })
+        };
+      }
+
+      if (targetStatus !== (existingRecord.status || 'pending_review').toLowerCase()) {
+        const changedBy = (
+          payload.changedBy ||
+          payload.updatedBy ||
+          payload.editedBy ||
+          roleCheck?.user?.name ||
+          roleCheck?.user?.email ||
+          payload.assessorName ||
+          'Assessor'
+        ).trim();
+
+        const nowIso = new Date().toISOString();
+        updateFields.status = targetStatus;
+        updateFields.statusChangedAt = nowIso;
+        statusHistoryEntry = {
+          status: targetStatus,
+          changedAt: nowIso,
+          changedBy: changedBy
+        };
+      }
     }
 
     // 4. Prepare audit trail snapshot
@@ -110,7 +158,6 @@ export const handler = async (event, context) => {
       previousBreakdown: Array.isArray(existingRecord.breakdown) ? [...existingRecord.breakdown] : []
     };
 
-    const updateFields = {};
     if (payload.companyName) updateFields.companyName = String(payload.companyName).trim();
     if (payload.deviceModel) updateFields.deviceModel = String(payload.deviceModel).trim();
     if (payload.packageName) updateFields.packageName = String(payload.packageName).trim();
@@ -127,6 +174,19 @@ export const handler = async (event, context) => {
       updateFields.assessorId = cleanAssessorId;
     }
     if (payload.assessmentDate) updateFields.assessmentDate = String(payload.assessmentDate).trim();
+    if (payload.scheduledDate !== undefined) updateFields.scheduledDate = payload.scheduledDate ? String(payload.scheduledDate).trim() : null;
+    if (payload.requestedPackage) updateFields.requestedPackage = String(payload.requestedPackage).trim();
+    if (payload.contactPerson !== undefined) updateFields.contactPerson = String(payload.contactPerson).trim();
+    if (payload.contactEmail !== undefined) updateFields.contactEmail = String(payload.contactEmail).trim();
+    if (payload.contactPhone !== undefined) updateFields.contactPhone = String(payload.contactPhone).trim();
+    if (payload.invoice && typeof payload.invoice === 'object') {
+      updateFields.invoice = {
+        invoiceNumber: String(payload.invoice.invoiceNumber || '').trim(),
+        amount: Number(payload.invoice.amount || 0),
+        issuedDate: String(payload.invoice.issuedDate || '').trim(),
+        dueDate: String(payload.invoice.dueDate || '').trim()
+      };
+    }
 
     // If breakdown array provided, recompute scores server-side
     if (Array.isArray(payload.breakdown) && payload.breakdown.length > 0) {
@@ -143,10 +203,15 @@ export const handler = async (event, context) => {
 
     updateFields.updatedAt = new Date().toISOString();
 
+    const pushOps = { evaluationHistory: historySnapshot };
+    if (statusHistoryEntry) {
+      pushOps.statusHistory = statusHistoryEntry;
+    }
+
     if (connection.isMongoAtlas) {
       const result = await collection.updateOne(filter, {
         $set: updateFields,
-        $push: { evaluationHistory: historySnapshot }
+        $push: pushOps
       });
 
       if (result.matchedCount === 0) {
@@ -165,13 +230,15 @@ export const handler = async (event, context) => {
           success: true,
           message: 'Evaluation updated successfully with audit trail snapshot in MongoDB Atlas',
           id,
+          status: updateFields.status || existingRecord.status,
           updatedFields: Object.keys(updateFields),
           auditSnapshot: historySnapshot,
+          statusHistoryEntry: statusHistoryEntry || null,
           data: updatedRecord
         })
       };
     } else {
-      const result = await connection.updateEvaluation(id, updateFields, historySnapshot);
+      const result = await connection.updateEvaluation(id, updateFields, historySnapshot, statusHistoryEntry);
       if (result.matchedCount === 0) {
         return {
           statusCode: 404,
@@ -187,6 +254,7 @@ export const handler = async (event, context) => {
           success: true,
           message: 'Evaluation updated successfully with audit trail snapshot in local store',
           id,
+          status: updateFields.status || existingRecord.status,
           updatedFields: Object.keys(updateFields),
           auditSnapshot: historySnapshot,
           data: result.updatedDoc

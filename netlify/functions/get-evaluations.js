@@ -7,7 +7,7 @@
  */
 
 import { connectToDatabase, COLLECTION_NAME } from './db.js';
-import { validateRole, ROLE_MANAGER, authErrorResponse } from './auth.js';
+import { validateRole, ROLE_MANAGER, ROLE_ASSESSOR, authErrorResponse } from './auth.js';
 
 export const handler = async (event, context) => {
   const headers = {
@@ -45,11 +45,15 @@ export const handler = async (event, context) => {
   };
   console.log(`[AUTH-DEBUG get-evaluations] Received x-api-key: ${mask(incomingKey)} | Expected MANAGER_API_KEY: ${mask(process.env.MANAGER_API_KEY)} | Fallback default: ${mask('trackscore-manager-key-2026')}`);
 
-  // 1. API Protection Check (Manager Role Required)
+  // 1. API Protection Check (Manager Role Required; Assessor or Vendor Forbidden from Global List)
   const roleCheck = validateRole(event, ROLE_MANAGER);
   if (!roleCheck.authorized) {
     return authErrorResponse(headers, roleCheck.statusCode, roleCheck.error);
   }
+
+  const isAssessorOnly = roleCheck.role === 'assessor';
+  const authenticatedAssessorId = roleCheck.user?.assessorId;
+  const authenticatedAssessorName = roleCheck.user?.name;
 
   try {
     const params = event.queryStringParameters || {};
@@ -59,6 +63,7 @@ export const handler = async (event, context) => {
     const statusFilter = (params.status || '').trim().toLowerCase();
     const sortBy = params.sortBy === 'statusChangedAt' ? 'statusChangedAt' : 'createdAt';
     const includeBreakdown = params.includeBreakdown === 'true';
+    const searchQuery = (params.q || '').trim().toLowerCase();
 
     const connection = await connectToDatabase();
     let evaluations = [];
@@ -67,9 +72,52 @@ export const handler = async (event, context) => {
     if (connection.isMongoAtlas) {
       const collection = connection.db.collection(COLLECTION_NAME);
       const queryFilter = includeDeleted ? {} : { deletedAt: { $exists: false } };
-      if (statusFilter && statusFilter !== 'all') {
-        queryFilter.status = statusFilter;
+      
+      // Strict role scoping for assessors
+      if (isAssessorOnly) {
+        const assessorConditions = [];
+        if (authenticatedAssessorId) {
+          assessorConditions.push({ assessorId: authenticatedAssessorId });
+        }
+        if (authenticatedAssessorName) {
+          assessorConditions.push({ assessorName: authenticatedAssessorName });
+        }
+        if (assessorConditions.length > 0) {
+          queryFilter.$or = assessorConditions;
+        }
+      } else if (params.assessor) {
+        const aParam = params.assessor.trim();
+        queryFilter.$or = [
+          { assessorId: aParam },
+          { assessorName: { $regex: aParam, $options: 'i' } }
+        ];
       }
+
+      if (statusFilter && statusFilter !== 'all') {
+        if (statusFilter === 'completed') {
+          queryFilter.status = { $in: ['completed', 'approved'] };
+        } else if (statusFilter === 'registrations' || statusFilter.includes(',')) {
+          const list = statusFilter === 'registrations' ? ['registered', 'scheduled'] : statusFilter.split(',').map(s => s.trim().toLowerCase());
+          queryFilter.status = { $in: list };
+        } else {
+          queryFilter.status = statusFilter;
+        }
+      }
+
+      if (searchQuery) {
+        const sRegex = { $regex: searchQuery, $options: 'i' };
+        queryFilter.$and = queryFilter.$and || [];
+        queryFilter.$and.push({
+          $or: [
+            { companyName: sRegex },
+            { deviceModel: sRegex },
+            { assessorName: sRegex },
+            { 'invoice.invoiceNumber': sRegex },
+            { 'certificate.certificateNumber': sRegex }
+          ]
+        });
+      }
+
       total = await collection.countDocuments(queryFilter);
       const sortDoc = {};
       sortDoc[sortBy] = -1;
@@ -82,9 +130,47 @@ export const handler = async (event, context) => {
         .toArray();
     } else {
       let allEvaluations = await connection.getEvaluations(includeDeleted);
-      if (statusFilter && statusFilter !== 'all') {
-        allEvaluations = allEvaluations.filter(d => (d.status || 'pending_review').toLowerCase() === statusFilter);
+
+      // Strict role scoping for assessors in local fallback
+      if (isAssessorOnly) {
+        allEvaluations = allEvaluations.filter(d => {
+          const matchId = authenticatedAssessorId && String(d.assessorId || '') === authenticatedAssessorId;
+          const matchName = authenticatedAssessorName && String(d.assessorName || '').toLowerCase().includes(authenticatedAssessorName.toLowerCase());
+          return matchId || matchName;
+        });
+      } else if (params.assessor) {
+        const aParam = params.assessor.trim().toLowerCase();
+        allEvaluations = allEvaluations.filter(d => 
+          String(d.assessorId || '').toLowerCase() === aParam ||
+          String(d.assessorName || '').toLowerCase().includes(aParam)
+        );
       }
+
+      if (statusFilter && statusFilter !== 'all') {
+        if (statusFilter === 'completed') {
+          allEvaluations = allEvaluations.filter(d => {
+            const s = (d.status || 'pending_review').toLowerCase();
+            return s === 'completed' || s === 'approved';
+          });
+        } else if (statusFilter === 'registrations' || statusFilter.includes(',')) {
+          const list = statusFilter === 'registrations' ? ['registered', 'scheduled'] : statusFilter.split(',').map(s => s.trim().toLowerCase());
+          allEvaluations = allEvaluations.filter(d => list.includes((d.status || '').toLowerCase()));
+        } else {
+          allEvaluations = allEvaluations.filter(d => (d.status || 'pending_review').toLowerCase() === statusFilter);
+        }
+      }
+
+      if (searchQuery) {
+        allEvaluations = allEvaluations.filter(d => {
+          const c = String(d.companyName || '').toLowerCase();
+          const m = String(d.deviceModel || '').toLowerCase();
+          const a = String(d.assessorName || '').toLowerCase();
+          const inv = String(d.invoice?.invoiceNumber || '').toLowerCase();
+          const cert = String(d.certificate?.certificateNumber || '').toLowerCase();
+          return c.includes(searchQuery) || m.includes(searchQuery) || a.includes(searchQuery) || inv.includes(searchQuery) || cert.includes(searchQuery);
+        });
+      }
+
       if (sortBy === 'statusChangedAt') {
         allEvaluations.sort((a, b) => new Date(b.statusChangedAt || b.createdAt) - new Date(a.statusChangedAt || a.createdAt));
       }
